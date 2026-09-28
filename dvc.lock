@@ -1,0 +1,17 @@
+schema: '2.0'
+stages:
+  raw_data:
+    cmd: python -c "import os; assert os.path.exists('data/raw/train.csv')"
+    deps:
+    - path: data/raw/data_description.txt
+      hash: md5
+      md5: 257555ae04270bc5c3e3a20189c2d1b7
+      size: 13370
+    - path: data/raw/test.csv
+      hash: md5
+      md5: dcec4b79bf9c7317bd9e17789bf888f0
+      size: 451405
+    - path: data/raw/train.csv
+      hash: md5
+      md5: 80ccab65fb115cbad143dbbd2bcd5577
+      size: 460676

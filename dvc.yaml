@@ -1,0 +1,7 @@
+stages:
+  raw_data:
+    cmd: python -c "import os; assert os.path.exists('data/raw/train.csv')"
+    deps:
+      - data/raw/train.csv
+      - data/raw/test.csv
+      - data/raw/data_description.txt
