@@ -1,0 +1,16 @@
+seed: 42
+
+split:
+  test_size: 0.2
+  seed: 42
+
+outliers:
+  grlivarea_max: 4000
+  saleprice_min: 300000
+
+cv:
+  n_splits: 5
+  n_repeats: 3
+
+model:
+  optuna_trials: 60
