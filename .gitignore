@@ -16,3 +16,4 @@ venv/
 mlruns/
 mlflow.db
 logs/*.jsonl
+*.egg-info/

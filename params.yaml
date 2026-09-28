@@ -14,3 +14,6 @@ cv:
 
 model:
   optuna_trials: 60
+
+clean:
+  drop_cols: [Id, Utilities, Street, Condition2, RoofMatl, Heating, PoolQC, MiscFeature]
