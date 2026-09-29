@@ -1,0 +1,27 @@
+{
+  "Lasso": {
+    "alpha": 0.0006119854691593898
+  },
+  "ElasticNet": {
+    "alpha": 0.0006358358856676254,
+    "l1_ratio": 0.6872653200164409
+  },
+  "XGBoost": {
+    "n_estimators": 1476,
+    "learning_rate": 0.03262249393408143,
+    "max_depth": 3,
+    "min_child_weight": 4,
+    "subsample": 0.8535059794504334,
+    "colsample_bytree": 0.32760317883921475,
+    "reg_lambda": 0.1645820664056707,
+    "reg_alpha": 0.0006408000295252277
+  },
+  "CatBoost": {
+    "iterations": 1882,
+    "learning_rate": 0.01871879330520506,
+    "depth": 4,
+    "l2_leaf_reg": 1.1752776200103654,
+    "random_strength": 1.7563780885296132,
+    "bagging_temperature": 0.7824263094276925
+  }
+}

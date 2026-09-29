@@ -1,0 +1,10 @@
+{
+  "weights": {
+    "Lasso": 0.2596586609018729,
+    "ElasticNet": 0.2643797339856401,
+    "XGBoost": 0.4377247188109414,
+    "CatBoost": 0.03823688630154574
+  },
+  "decision": "USE_BLEND",
+  "best_single": "Lasso"
+}
