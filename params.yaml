@@ -17,3 +17,6 @@ model:
 
 clean:
   drop_cols: [Id, Utilities, Street, Condition2, RoofMatl, Heating, PoolQC, MiscFeature]
+
+features:
+  drop_after: [GarageArea, GarageYrBlt, PoolArea, MiscVal]
