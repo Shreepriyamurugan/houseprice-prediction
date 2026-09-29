@@ -10,13 +10,13 @@ from lifinity.features.engineering import build_cleaning_pipeline
 def main() -> None:
     root = get_project_root()
     train_path = root / "data" / "processed" / "train.parquet"
-    holdout_path = root / "data" / "processed" / "holdout.parquet"
+    val_path = root / "data" / "processed" / "val.parquet"
 
     train_df = pd.read_parquet(train_path)
-    holdout_df = pd.read_parquet(holdout_path)
+    val_df = pd.read_parquet(val_path)
 
     X_train = train_df.drop(columns=["SalePrice"], errors="ignore")
-    X_holdout = holdout_df.drop(columns=["SalePrice"], errors="ignore")
+    X_holdout = val_df.drop(columns=["SalePrice"], errors="ignore")
 
     pipe = build_cleaning_pipeline()
     X_train_out = pipe.fit_transform(X_train)

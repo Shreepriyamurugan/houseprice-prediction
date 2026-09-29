@@ -20,19 +20,19 @@ from lifinity.features.preprocessor import (
 def train_and_holdout_clean():
     root = get_project_root()
     train_path = root / "data" / "processed" / "train.parquet"
-    holdout_path = root / "data" / "processed" / "holdout.parquet"
+    val_path = root / "data" / "processed" / "val.parquet"
 
     train_df = pd.read_parquet(train_path)
-    holdout_df = pd.read_parquet(holdout_path)
+    val_df = pd.read_parquet(val_path)
 
     cleaning_pipe = build_cleaning_pipeline()
     X_train_clean = cleaning_pipe.fit_transform(train_df.drop(columns=["SalePrice"], errors="ignore"))
-    X_holdout_clean = cleaning_pipe.transform(holdout_df.drop(columns=["SalePrice"], errors="ignore"))
+    X_holdout_clean = cleaning_pipe.transform(val_df.drop(columns=["SalePrice"], errors="ignore"))
     
     y_train = train_df["SalePrice"]
-    y_holdout = holdout_df["SalePrice"] if "SalePrice" in holdout_df.columns else None
+    y_holdout = val_df["SalePrice"] if "SalePrice" in val_df.columns else None
 
-    return X_train_clean, X_holdout_clean, y_train, y_holdout, train_df, holdout_df
+    return X_train_clean, X_holdout_clean, y_train, y_holdout, train_df, val_df
 
 
 @pytest.mark.parametrize("kind", ["tree", "linear"])
@@ -111,10 +111,10 @@ def test_skew_corrector_reduces_mean_skewness(train_and_holdout_clean):
 
 
 def test_build_full_pipeline_ridge_linear(train_and_holdout_clean):
-    _, _, y_train, _, train_df, holdout_df = train_and_holdout_clean
+    _, _, y_train, _, train_df, val_df = train_and_holdout_clean
 
     X_train = train_df.drop(columns=["SalePrice"], errors="ignore")
-    X_holdout = holdout_df.drop(columns=["SalePrice"], errors="ignore")
+    X_holdout = val_df.drop(columns=["SalePrice"], errors="ignore")
 
     pipe = build_full_pipeline(Ridge(alpha=10.0), kind="linear")
     pipe.fit(X_train, y_train)
@@ -126,10 +126,10 @@ def test_build_full_pipeline_ridge_linear(train_and_holdout_clean):
 
 
 def test_joblib_dump_and_load_full_pipeline(train_and_holdout_clean, tmp_path):
-    _, _, y_train, _, train_df, holdout_df = train_and_holdout_clean
+    _, _, y_train, _, train_df, val_df = train_and_holdout_clean
 
     X_train = train_df.drop(columns=["SalePrice"], errors="ignore")
-    X_holdout = holdout_df.drop(columns=["SalePrice"], errors="ignore")
+    X_holdout = val_df.drop(columns=["SalePrice"], errors="ignore")
 
     pipe = build_full_pipeline(Ridge(alpha=10.0), kind="linear")
     pipe.fit(X_train, y_train)

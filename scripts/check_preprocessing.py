@@ -19,14 +19,14 @@ from lifinity.features.preprocessor import (
 def main() -> None:
     root = get_project_root()
     train_path = root / "data" / "processed" / "train.parquet"
-    holdout_path = root / "data" / "processed" / "holdout.parquet"
+    val_path = root / "data" / "processed" / "val.parquet"
 
     train_df = pd.read_parquet(train_path)
-    holdout_df = pd.read_parquet(holdout_path)
+    val_df = pd.read_parquet(val_path)
 
     cleaning_pipe = build_cleaning_pipeline()
     X_train_clean = cleaning_pipe.fit_transform(train_df.drop(columns=["SalePrice"], errors="ignore"))
-    X_holdout_clean = cleaning_pipe.transform(holdout_df.drop(columns=["SalePrice"], errors="ignore"))
+    X_holdout_clean = cleaning_pipe.transform(val_df.drop(columns=["SalePrice"], errors="ignore"))
 
     # Preprocessors
     prep_tree = build_preprocessor(kind="tree")
