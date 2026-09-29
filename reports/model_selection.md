@@ -1,8 +1,8 @@
 # Model Selection Report
-**Date**: 2026-09-29 | **Git Commit**: `831341c` | **Data MD5**: `80ccab65fb115cbad143dbbd2bcd5577`
+**Date**: 2026-09-29 | **Git Commit**: `d3ac642` | **Data MD5**: `80ccab65fb115cbad143dbbd2bcd5577`
 
 ## Executive Summary
-This document presents the complete modeling trajectory for the Lifinity Ames Housing price regression system, covering feature selection, baseline model comparison, hyperparameter tuning with Optuna, ensemble blending analysis, and final model selection.
+This document presents the complete modeling trajectory for the Lifinity Ames Housing price regression system, covering feature selection, baseline model comparison, hyperparameter tuning with Optuna, ensemble blending analysis, final model selection, and final holdout test evaluation.
 
 ## Data Split Summary
 - **Train set**: 1,020 rows (70% split; 2 extreme outliers with `GrLivArea > 4000` & `SalePrice < $300k` removed)
@@ -11,6 +11,7 @@ This document presents the complete modeling trajectory for the Lifinity Ames Ho
 
 ## 1. Feature Selection & Importance
 - **Lasso Embedded Selection**: Retained **103 / 205** non-zero coefficient features after L1 regularization.
+  *(measured before LotRatio and IsRemodeled were dropped)*
 
 ### Top 10 Features by Lasso |Coefficient|
 | Rank | Feature | Coefficient |
@@ -80,23 +81,62 @@ This document presents the complete modeling trajectory for the Lifinity Ames Ho
 - **Optimization**: SLSQP constrained optimization minimizing out-of-fold (OOF) RMSE(log).
 - **Decision Rule**: USE BLEND only if blend OOF RMSE is > 0.002 lower than best single model AND val RMSE <= best single model.
 - **Decision Result**: **`USE_BLEND`**
-- **Ensemble Weights**: `{"Lasso": 0.2596586609018729, "ElasticNet": 0.2643797339856401, "XGBoost": 0.4377247188109414, "CatBoost": 0.03823688630154574}`
 
-## 5. Final Model Selection & Performance
-- **Selected Architecture**: **BLEND** (`kind=linear`)
-- **Validation RMSE(log)**: `0.1140`
-- **Validation MAE**: `$14,277.35`
-- **Validation R² (log scale)**: `0.9230`
-- **Validation MAPE**: `8.32%`
-- **MAPE-Based Accuracy Metric (100 - MAPE)**: **`91.68%`**
+### Ensemble Results Table
+| model      |   oof_rmse_log |   val_rmse_log |   val_mae |   val_mape |   val_r2 |    weight | type   |
+|:-----------|---------------:|---------------:|----------:|-----------:|---------:|----------:|:-------|
+| Lasso      |       0.107432 |       0.114019 |   14277.3 |  0.0832049 | 0.923047 | 0.259659  | single |
+| ElasticNet |       0.107604 |       0.113953 |   14306.3 |  0.0831376 | 0.923137 | 0.26438   | single |
+| XGBoost    |       0.108678 |       0.117805 |   13297.9 |  0.081832  | 0.917852 | 0.437725  | single |
+| CatBoost   |       0.109678 |       0.117955 |   13376.3 |  0.0815781 | 0.917643 | 0.0382369 | single |
+| Blend      |       0.10351  |       0.111421 |   13140.7 |  0.078327  | 0.926514 | 1         | blend  |
 
-## 6. System Limitations & Risks
+## Final model
+- **Selected Architecture**: **BLEND** (`kind=blend (linear + tree)`)
+- **Validation RMSE(log)**: `0.1114`
+- **Validation MAE**: `$13,140.68`
+- **Validation R^2 (log scale)**: `0.9265`
+- **Validation MAPE**: `7.83%`
+- **MAPE-based Accuracy Metric**: **`92.17%`**
+
+### Blend Model Weights
+| Model | Weight (%) |
+| --- | --- |
+| Lasso | 25.97% |
+| ElasticNet | 26.44% |
+| XGBoost | 43.77% |
+| CatBoost | 3.82% |
+
+## Final test evaluation
+- **Status**: Evaluated on held-out test set (219 rows)
+- **Test RMSE(log)**: `0.1249`
+- **Test MAE**: `$13,088.17`
+- **Test RMSE ($)**: `$21,091.65`
+- **Test MAPE**: `8.28%`
+- **Test R^2 (log scale)**: `0.9070`
+- **Test R^2 ($ scale)**: `0.9191`
+
+### Error Breakdown by Price Band
+| Price Band | Count | MAE ($) | MAPE (%) |
+| --- | --- | --- | --- |
+| <$150k | 91 | $9,969.45 | 10.63% |
+| $150-300k | 113 | $12,723.18 | 6.32% |
+| $300-450k | 14 | $26,669.71 | 7.63% |
+| >$450k | 1 | $147,993.32 | 24.20% |
+
+### Reference Model Performance
+- **Lasso (reference, not used for selection)**: Test RMSE(log) = `0.1283`, MAE = `$13,725.93`, MAPE = `8.63%`
+
+## System Limitations & Risks
 1. **Sample Size Constraints**: Validation set has ~219 samples; small evaluation sets exhibit variance across splits.
-2. **Geographic & Temporal Scope**: Trained on Ames, Iowa housing data (2006–2010); non-generalizable to current interest rate regimes or unobserved regions without recalibration.
+2. **Geographic & Temporal Scope**: Trained on Ames, Iowa housing data (2006-2010); non-generalizable to current interest rate regimes or unobserved regions without recalibration.
 3. **Tree Model Overfitting**: GBDT models exhibit larger train vs CV gaps (~0.09) compared to linear models (~0.016).
 
-## 7. Performance Visualizations
-![Model Comparison](file:///C:/projects/lifinity/reports/figures/12_model_comparison.png)
-![Feature Ablation](file:///C:/projects/lifinity/reports/figures/13_feature_ablation.png)
-![Feature Importance](file:///C:/projects/lifinity/reports/figures/14_feature_importance.png)
-![Tuning Before/After](file:///C:/projects/lifinity/reports/figures/15_tuning_before_after.png)
+## Performance Visualizations
+![Model Comparison](figures/12_model_comparison.png)
+![Feature Ablation](figures/13_feature_ablation.png)
+![Feature Importance](figures/14_feature_importance.png)
+![Tuning Before/After](figures/15_tuning_before_after.png)
+![Test Predictions vs Actual](figures/16_test_pred_vs_actual.png)
+![Test Residuals](figures/17_test_residuals.png)
+![Test Error by Band](figures/18_test_error_by_band.png)

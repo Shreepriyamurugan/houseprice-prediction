@@ -1,5 +1,6 @@
 """Ensemble blending of tuned candidate models."""
 
+import argparse
 import json
 from typing import Any
 from catboost import CatBoostRegressor
@@ -73,7 +74,7 @@ class LogBlendRegressor(BaseEstimator, RegressorMixin):
         raise ValueError("LogBlendRegressor not fitted and input_features not provided.")
 
 
-def run_ensemble() -> None:
+def run_ensemble(use_saved_weights: bool = False) -> None:
     root = get_project_root()
     params = load_params()
 
@@ -114,10 +115,12 @@ def run_ensemble() -> None:
     print("PART 2: Ensemble Blending Optimization")
     print("=" * 70)
 
-    # Generate OOF predictions on train
     oof_log_preds = []
     single_oof_scores = {}
-    single_val_scores = {}
+    single_val_rmse = {}
+    single_val_mae = {}
+    single_val_mape = {}
+    single_val_r2 = {}
 
     y_train_log = np.log1p(y_train)
 
@@ -135,9 +138,11 @@ def run_ensemble() -> None:
         pipe_fitted = clone(pipe).fit(X_train, y_train)
         val_preds = pipe_fitted.predict(X_val)
         val_rmse = float(rmse_log(y_val, val_preds))
-        single_val_scores[name] = val_rmse
+        single_val_rmse[name] = val_rmse
+        single_val_mae[name] = float(mean_absolute_error(y_val, val_preds))
+        single_val_mape[name] = float(mean_absolute_percentage_error(y_val, val_preds))
+        single_val_r2[name] = float(r2_score(np.log1p(y_val), np.log1p(val_preds)))
 
-    # Optimize blend weights using SLSQP
     n_models = len(tuned_models)
 
     def blend_loss(weights: np.ndarray) -> float:
@@ -145,13 +150,24 @@ def run_ensemble() -> None:
         blended = sum(w_norm[i] * oof_log_preds[i] for i in range(n_models))
         return float(np.sqrt(np.mean((y_train_log - blended) ** 2)))
 
-    init_weights = np.ones(n_models) / n_models
-    bounds = [(0.0, 1.0) for _ in range(n_models)]
-    constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+    weights_json_file = root / "reports" / "ensemble_weights.json"
 
-    opt_res = minimize(blend_loss, init_weights, method="SLSQP", bounds=bounds, constraints=constraints)
-    opt_weights = opt_res.x / opt_res.x.sum()
-    blend_oof_rmse = float(opt_res.fun)
+    if use_saved_weights and weights_json_file.exists():
+        print(f"Loading weights from {weights_json_file}...")
+        with open(weights_json_file, "r", encoding="utf-8") as f:
+            saved_info = json.load(f)
+        saved_w_dict = saved_info["weights"]
+        opt_weights = np.array([saved_w_dict[name] for name, _ in tuned_models], dtype=float)
+        opt_weights = opt_weights / opt_weights.sum()
+        blend_oof_rmse = float(blend_loss(opt_weights))
+    else:
+        init_weights = np.ones(n_models) / n_models
+        bounds = [(0.0, 1.0) for _ in range(n_models)]
+        constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
+
+        opt_res = minimize(blend_loss, init_weights, method="SLSQP", bounds=bounds, constraints=constraints)
+        opt_weights = opt_res.x / opt_res.x.sum()
+        blend_oof_rmse = float(opt_res.fun)
 
     # Evaluate blend on val
     blend_model = LogBlendRegressor(estimators=tuned_models, weights=opt_weights)
@@ -165,24 +181,18 @@ def run_ensemble() -> None:
     # Identify best single model by OOF RMSE(log)
     best_single_name = min(single_oof_scores, key=single_oof_scores.get)
     best_single_oof = single_oof_scores[best_single_name]
-    best_single_val = single_val_scores[best_single_name]
+    best_single_val = single_val_rmse[best_single_name]
 
     # Decision Rule: USE BLEND if blend_oof < (best_single_oof - 0.002) AND blend_val <= best_single_val
     decision = "USE_BLEND" if (blend_oof_rmse < (best_single_oof - 0.002) and blend_val_rmse <= best_single_val) else "USE_SINGLE"
 
     print("\nSingle Tuned Models vs Blend Results:")
-    print(f"  {'Model':<15}  {'OOF RMSE(log)':>14}  {'Val RMSE(log)':>14}  {'Weight':>8}")
-    print(f"  {'-'*15}  {'-'*14}  {'-'*14}  {'-'*8}")
+    print(f"  {'Model':<15}  {'OOF RMSE(log)':>14}  {'Val RMSE(log)':>14}  {'Val MAE':>12}  {'Val MAPE':>10}  {'Val R2':>10}  {'Weight':>8}")
+    print(f"  {'-'*15}  {'-'*14}  {'-'*14}  {'-'*12}  {'-'*10}  {'-'*10}  {'-'*8}")
     for i, (name, _) in enumerate(tuned_models):
-        print(f"  {name:<15}  {single_oof_scores[name]:>14.4f}  {single_val_scores[name]:>14.4f}  {opt_weights[i]:>8.4f}")
-    print(f"  {'-'*15}  {'-'*14}  {'-'*14}  {'-'*8}")
-    print(f"  {'Blend':<15}  {blend_oof_rmse:>14.4f}  {blend_val_rmse:>14.4f}  {'1.0000':>8}")
-
-    print(f"\nDecision Rule Check:")
-    print(f"  Best Single Model        : {best_single_name} (OOF RMSE: {best_single_oof:.4f}, Val RMSE: {best_single_val:.4f})")
-    print(f"  Blend OOF Improvement    : {best_single_oof - blend_oof_rmse:.4f} (Required > 0.002)")
-    print(f"  Blend Val Improvement    : {best_single_val - blend_val_rmse:.4f} (Required >= 0.000)")
-    print(f"  FINAL DECISION           : {decision}")
+        print(f"  {name:<15}  {single_oof_scores[name]:>14.4f}  {single_val_rmse[name]:>14.4f}  {single_val_mae[name]:>12.2f}  {single_val_mape[name]:>10.4f}  {single_val_r2[name]:>10.4f}  {opt_weights[i]:>8.4f}")
+    print(f"  {'-'*15}  {'-'*14}  {'-'*14}  {'-'*12}  {'-'*10}  {'-'*10}  {'-'*8}")
+    print(f"  {'Blend':<15}  {blend_oof_rmse:>14.4f}  {blend_val_rmse:>14.4f}  {blend_val_mae:>12.2f}  {blend_val_mape:>10.4f}  {blend_val_r2:>10.4f}  {'1.0000':>8}")
 
     # Log to MLflow
     tracking_uri = params.get("mlflow", {}).get("tracking_uri", "sqlite:///mlflow.db")
@@ -198,7 +208,7 @@ def run_ensemble() -> None:
         for i, (name, _) in enumerate(tuned_models):
             mlflow.log_metric(f"weight_{name}", float(opt_weights[i]))
             mlflow.log_metric(f"oof_rmse_log_{name}", single_oof_scores[name])
-            mlflow.log_metric(f"val_rmse_log_{name}", single_val_scores[name])
+            mlflow.log_metric(f"val_rmse_log_{name}", single_val_rmse[name])
 
         mlflow.log_metrics(
             {
@@ -226,7 +236,10 @@ def run_ensemble() -> None:
             {
                 "model": name,
                 "oof_rmse_log": single_oof_scores[name],
-                "val_rmse_log": single_val_scores[name],
+                "val_rmse_log": single_val_rmse[name],
+                "val_mae": single_val_mae[name],
+                "val_mape": single_val_mape[name],
+                "val_r2": single_val_r2[name],
                 "weight": float(weights_dict[name]),
                 "type": "single",
             }
@@ -236,6 +249,9 @@ def run_ensemble() -> None:
             "model": "Blend",
             "oof_rmse_log": blend_oof_rmse,
             "val_rmse_log": blend_val_rmse,
+            "val_mae": blend_val_mae,
+            "val_mape": blend_val_mape,
+            "val_r2": blend_val_r2,
             "weight": 1.0,
             "type": "blend",
         }
@@ -248,4 +264,7 @@ def run_ensemble() -> None:
 
 
 if __name__ == "__main__":
-    run_ensemble()
+    parser = argparse.ArgumentParser(description="Ensemble blending optimization")
+    parser.add_argument("--use-saved-weights", action="store_true", help="Use saved weights from ensemble_weights.json")
+    args = parser.parse_args()
+    run_ensemble(use_saved_weights=args.use_saved_weights)
