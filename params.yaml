@@ -1,22 +1,10 @@
 seed: 42
-
-split:
-  test_size: 0.2
-  seed: 42
-
-outliers:
-  grlivarea_max: 4000
-  saleprice_min: 300000
-
-cv:
-  n_splits: 5
-  n_repeats: 3
-
-model:
-  optuna_trials: 60
-
+split: {test_size: 0.2, seed: 42}
+outliers: {grlivarea_max: 4000, saleprice_min: 300000}
+cv: {n_splits: 5, n_repeats: 3}
+model: {optuna_trials: 60}
 clean:
   drop_cols: [Id, Utilities, Street, Condition2, RoofMatl, Heating, PoolQC, MiscFeature]
-
 features:
   drop_after: [GarageArea, GarageYrBlt, PoolArea, MiscVal]
+preprocess: {skew_threshold: 0.75, min_frequency: 0.01}
