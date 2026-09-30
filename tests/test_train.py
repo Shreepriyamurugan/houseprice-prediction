@@ -7,8 +7,6 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import Ridge
 
-pytestmark = pytest.mark.requires_data
-
 from lifinity.config import get_project_root
 from lifinity.models.train import DropColumns, build_pipeline_with_ablation, rmse_log
 
@@ -58,6 +56,7 @@ def test_drop_columns_pipeline_pickling(tmp_path):
     assert (preds > 0).all()
 
 
+@pytest.mark.requires_data
 def test_smoke_train_and_mlflow(tmp_path):
     """Smoke test: 200-row sample of train.parquet, 2-fold KFold, Ridge + LightGBM(50), MLflow pointed at tmp_path."""
     import mlflow

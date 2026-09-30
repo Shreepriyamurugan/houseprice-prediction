@@ -6,8 +6,6 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import Ridge
 
-pytestmark = pytest.mark.requires_data
-
 from lifinity.config import get_project_root
 from lifinity.features.engineering import build_cleaning_pipeline
 from lifinity.features.preprocessor import (
@@ -37,6 +35,7 @@ def train_and_holdout_clean():
     return X_train_clean, X_holdout_clean, y_train, y_holdout, train_df, val_df
 
 
+@pytest.mark.requires_data
 @pytest.mark.parametrize("kind", ["tree", "linear"])
 def test_preprocessor_kinds_zero_nan_inf_numeric_identical(kind, train_and_holdout_clean):
     X_train_clean, X_holdout_clean, _, _, _, _ = train_and_holdout_clean
@@ -63,6 +62,7 @@ def test_preprocessor_kinds_zero_nan_inf_numeric_identical(kind, train_and_holdo
     assert list(X_train_prep.columns) == list(X_holdout_prep.columns), f"{kind} train and holdout columns differ"
 
 
+@pytest.mark.requires_data
 def test_exterqual_ex_encodes_higher_than_gd(train_and_holdout_clean):
     X_train_clean, _, _, _, _, _ = train_and_holdout_clean
 
@@ -79,6 +79,7 @@ def test_exterqual_ex_encodes_higher_than_gd(train_and_holdout_clean):
     assert ex_val > gd_val, f"Expected Ex ({ex_val}) > Gd ({gd_val})"
 
 
+@pytest.mark.requires_data
 def test_unknown_category_does_not_crash(train_and_holdout_clean):
     X_train_clean, X_holdout_clean, _, _, _, _ = train_and_holdout_clean
 
@@ -92,6 +93,7 @@ def test_unknown_category_does_not_crash(train_and_holdout_clean):
     assert X_holdout_prep.isnull().sum().sum() == 0
 
 
+@pytest.mark.requires_data
 def test_skew_corrector_reduces_mean_skewness(train_and_holdout_clean):
     X_train_clean, _, _, _, _, _ = train_and_holdout_clean
 
@@ -112,6 +114,7 @@ def test_skew_corrector_reduces_mean_skewness(train_and_holdout_clean):
     assert skew_after < skew_before, f"Expected mean |skew| after ({skew_after:.4f}) < before ({skew_before:.4f})"
 
 
+@pytest.mark.requires_data
 def test_build_full_pipeline_ridge_linear(train_and_holdout_clean):
     _, _, y_train, _, train_df, val_df = train_and_holdout_clean
 
@@ -127,6 +130,7 @@ def test_build_full_pipeline_ridge_linear(train_and_holdout_clean):
     assert (preds > 0).all(), "All predicted prices should be positive"
 
 
+@pytest.mark.requires_data
 def test_joblib_dump_and_load_full_pipeline(train_and_holdout_clean, tmp_path):
     _, _, y_train, _, train_df, val_df = train_and_holdout_clean
 

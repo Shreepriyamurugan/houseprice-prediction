@@ -5,11 +5,11 @@ import joblib
 import pandas as pd
 import pytest
 
-pytestmark = [pytest.mark.requires_data, pytest.mark.requires_model]
-
 from lifinity.config import get_project_root
 
 
+@pytest.mark.requires_data
+@pytest.mark.requires_model
 def test_model_joblib_loads_and_predicts():
     root = get_project_root()
     model_path = root / "models" / "model.joblib"
@@ -25,6 +25,7 @@ def test_model_joblib_loads_and_predicts():
     assert (preds > 0).all()
 
 
+@pytest.mark.requires_model
 def test_metrics_json_keys():
     root = get_project_root()
     metrics_path = root / "models" / "metrics.json"
@@ -38,6 +39,7 @@ def test_metrics_json_keys():
         assert k in metrics, f"Missing key '{k}' in metrics.json"
 
 
+@pytest.mark.requires_data
 def test_input_defaults_coverage():
     root = get_project_root()
     defaults_path = root / "models" / "input_defaults.json"

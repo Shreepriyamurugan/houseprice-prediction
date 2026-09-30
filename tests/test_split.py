@@ -3,12 +3,11 @@
 import pandas as pd
 import pytest
 
-pytestmark = pytest.mark.requires_data
-
 from lifinity.config import get_project_root
 from lifinity.data.split import make_split
 
 
+@pytest.mark.requires_data
 def test_split_proportions_and_no_overlap():
     root = get_project_root()
     raw_path = root / "data" / "raw" / "train.csv"
@@ -33,6 +32,7 @@ def test_split_proportions_and_no_overlap():
     assert len(set_val & set_test) == 0, "Overlap between val and test IDs"
 
 
+@pytest.mark.requires_data
 def test_outliers_only_removed_from_train():
     train_clean, val_clean, test_clean = make_split()
 

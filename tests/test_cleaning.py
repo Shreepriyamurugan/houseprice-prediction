@@ -2,8 +2,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytestmark = pytest.mark.requires_data
-
 from lifinity.config import get_project_root, load_params
 from lifinity.features.cleaning import ColumnDropper, DomainImputer, remove_outliers
 
@@ -15,6 +13,7 @@ def raw_train_df():
     return pd.read_csv(raw_path)
 
 
+@pytest.mark.requires_data
 def test_domain_imputer_train_csv_zero_nan(raw_train_df):
     """Test DomainImputer.fit_transform on train.csv leaves zero NaN."""
     imputer = DomainImputer()
@@ -87,6 +86,7 @@ def test_lot_frontage_medians_from_fit_only():
     assert transformed_b["LotFrontage"].iloc[2] == 80.0
 
 
+@pytest.mark.requires_data
 def test_remove_outliers_on_full_train(raw_train_df):
     """Test remove_outliers on full train.csv removes exactly Ids 524 and 1299."""
     params = load_params()
@@ -125,6 +125,7 @@ def test_column_dropper_ignores_missing_columns():
     assert list(result.columns) == ["SalePrice", "LotArea"]
 
 
+@pytest.mark.requires_data
 def test_column_dropper_defaults_from_params(raw_train_df):
     """Test ColumnDropper uses clean.drop_cols from params.yaml by default."""
     params = load_params()

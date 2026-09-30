@@ -4,8 +4,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytestmark = pytest.mark.requires_data
-
 from lifinity.config import get_project_root
 from lifinity.features.engineering import FeatureEngineer, QUAL_MAP, build_cleaning_pipeline
 
@@ -192,6 +190,7 @@ def test_drop_after_columns_gone(df, fe_default):
 #    -> zero NaN, zero inf, identical columns
 # ---------------------------------------------------------------------------
 
+@pytest.mark.requires_data
 def test_build_cleaning_pipeline_integration():
     root = get_project_root()
     train_path = root / "data" / "processed" / "train.parquet"

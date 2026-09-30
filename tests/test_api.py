@@ -16,8 +16,6 @@ MODEL_PATH = ROOT / "models" / "model.joblib"
 DEFAULTS_PATH = ROOT / "models" / "input_defaults.json"
 SAMPLE_PATH = ROOT / "api" / "sample_request.json"
 
-pytestmark = pytest.mark.requires_model
-
 
 @pytest.fixture
 def client():
@@ -26,6 +24,7 @@ def client():
         yield c
 
 
+@pytest.mark.requires_model
 def test_health_endpoint(client):
     response = client.get("/health")
     assert response.status_code == 200
@@ -36,6 +35,7 @@ def test_health_endpoint(client):
     assert "model_source" in data
 
 
+@pytest.mark.requires_model
 def test_predict_sample(client):
     assert SAMPLE_PATH.exists()
     with open(SAMPLE_PATH, "r", encoding="utf-8") as f:
@@ -55,6 +55,7 @@ def test_predict_sample(client):
     assert "model_version" in data
 
 
+@pytest.mark.requires_model
 def test_predict_minimal_required_fields(client):
     minimal = {
         "OverallQual": 7,
@@ -67,6 +68,7 @@ def test_predict_minimal_required_fields(client):
     assert data["fields_defaulted"] > 70
 
 
+@pytest.mark.requires_model
 def test_predict_invalid_overall_qual(client):
     payload = {
         "OverallQual": 15,
@@ -77,6 +79,7 @@ def test_predict_invalid_overall_qual(client):
     assert response.status_code == 422
 
 
+@pytest.mark.requires_model
 def test_predict_invalid_neighborhood(client):
     payload = {
         "OverallQual": 7,
@@ -87,6 +90,7 @@ def test_predict_invalid_neighborhood(client):
     assert response.status_code == 422
 
 
+@pytest.mark.requires_model
 def test_predict_future_year_built_warning(client):
     payload = {
         "OverallQual": 7,
@@ -101,6 +105,7 @@ def test_predict_future_year_built_warning(client):
     assert any("2010" in w for w in data["warnings"])
 
 
+@pytest.mark.requires_model
 def test_predict_alias_1st_flr_sf(client):
     payload = {
         "OverallQual": 7,
@@ -115,6 +120,7 @@ def test_predict_alias_1st_flr_sf(client):
     assert data["predicted_price"] > 0
 
 
+@pytest.mark.requires_model
 def test_predict_batch(client):
     batch = [
         {"OverallQual": 6, "GrLivArea": 1200.0, "Neighborhood": "NAmes"},
@@ -128,6 +134,7 @@ def test_predict_batch(client):
     assert len(data["predictions"]) == 3
 
 
+@pytest.mark.requires_model
 def test_model_info_endpoint(client):
     response = client.get("/model-info")
     assert response.status_code == 200
@@ -141,6 +148,7 @@ def test_model_info_endpoint(client):
     assert "r2_log" in tm
 
 
+@pytest.mark.requires_model
 def test_prediction_no_distortion_vs_direct_model(client):
     with open(SAMPLE_PATH, "r", encoding="utf-8") as f:
         sample = json.load(f)
