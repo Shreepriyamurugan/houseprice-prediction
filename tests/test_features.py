@@ -4,6 +4,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytestmark = pytest.mark.requires_data
+
 from lifinity.config import get_project_root
 from lifinity.features.engineering import FeatureEngineer, QUAL_MAP, build_cleaning_pipeline
 

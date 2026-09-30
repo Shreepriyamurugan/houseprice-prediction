@@ -16,3 +16,7 @@ line-length = 100
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
+markers = [
+    "requires_data: needs data/raw/train.csv or data/processed/*.parquet",
+    "requires_model: needs models/model.joblib",
+]

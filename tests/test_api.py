@@ -16,10 +16,7 @@ MODEL_PATH = ROOT / "models" / "model.joblib"
 DEFAULTS_PATH = ROOT / "models" / "input_defaults.json"
 SAMPLE_PATH = ROOT / "api" / "sample_request.json"
 
-pytestmark = pytest.mark.skipif(
-    not MODEL_PATH.exists(),
-    reason="models/model.joblib is missing; skipping API integration tests",
-)
+pytestmark = pytest.mark.requires_model
 
 
 @pytest.fixture

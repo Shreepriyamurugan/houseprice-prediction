@@ -2,6 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytestmark = pytest.mark.requires_data
+
 from lifinity.config import get_project_root, load_params
 from lifinity.features.cleaning import ColumnDropper, DomainImputer, remove_outliers
 

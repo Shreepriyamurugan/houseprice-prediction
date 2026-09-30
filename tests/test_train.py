@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import Ridge
 
+pytestmark = pytest.mark.requires_data
+
 from lifinity.config import get_project_root
 from lifinity.models.train import DropColumns, build_pipeline_with_ablation, rmse_log
 

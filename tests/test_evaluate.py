@@ -5,6 +5,8 @@ import joblib
 import pandas as pd
 import pytest
 
+pytestmark = [pytest.mark.requires_data, pytest.mark.requires_model]
+
 from lifinity.config import get_project_root
 
 

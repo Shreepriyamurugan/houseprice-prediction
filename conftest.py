@@ -109,3 +109,25 @@ if "_ssl" not in sys.modules:
         for k, v in attrs.items():
             setattr(mod, k, v)
         sys.modules["_ssl"] = mod
+
+import os
+from pathlib import Path
+import pytest
+from lifinity.config import get_project_root
+
+
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    ci_simulate = os.getenv("LIFINITY_CI_SIMULATE") == "1"
+    root = get_project_root()
+
+    if item.get_closest_marker("requires_data"):
+        raw_csv = root / "data" / "raw" / "train.csv"
+        proc_parquet = root / "data" / "processed" / "train.parquet"
+        if ci_simulate or not (raw_csv.exists() or proc_parquet.exists()):
+            pytest.skip("Test requires real data files (missing or LIFINITY_CI_SIMULATE=1)")
+
+    if item.get_closest_marker("requires_model"):
+        model_file = root / "models" / "model.joblib"
+        if ci_simulate or not model_file.exists():
+            pytest.skip("Test requires models/model.joblib (missing or LIFINITY_CI_SIMULATE=1)")
+

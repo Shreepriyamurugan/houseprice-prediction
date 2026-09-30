@@ -6,6 +6,8 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import Ridge
 
+pytestmark = pytest.mark.requires_data
+
 from lifinity.config import get_project_root
 from lifinity.features.engineering import build_cleaning_pipeline
 from lifinity.features.preprocessor import (

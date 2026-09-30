@@ -6,6 +6,8 @@ import pandas as pd
 import pytest
 from sklearn.linear_model import Lasso, Ridge
 
+pytestmark = pytest.mark.requires_data
+
 from lifinity.config import get_project_root
 from lifinity.features.preprocessor import build_full_pipeline
 from lifinity.models.ensemble import LogBlendRegressor

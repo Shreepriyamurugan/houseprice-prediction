@@ -3,6 +3,8 @@
 import pandas as pd
 import pytest
 
+pytestmark = pytest.mark.requires_data
+
 from lifinity.config import get_project_root
 from lifinity.data.split import make_split
 
