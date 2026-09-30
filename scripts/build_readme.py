@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+import subprocess
 import sys
 import yaml
 import pandas as pd
@@ -23,9 +24,12 @@ def fmt_pct2(val: float) -> str:
     return f"{val:.2f}%"
 
 
-def generate_tree(dir_path: Path, prefix: str = "") -> list[str]:
+def generate_tree(dir_path: Path, root_path: Path | None = None, prefix: str = "") -> list[str]:
     """Recursively generate directory tree excluding specified patterns."""
-    exclude_dirs = {".venv", ".git", "data", "mlruns", "__pycache__", "scratch", ".pytest_cache", ".ruff_cache"}
+    if root_path is None:
+        root_path = dir_path
+
+    exclude_dirs = {".venv", ".git", ".dvc", "data", "mlruns", "__pycache__", "scratch", ".pytest_cache", ".ruff_cache"}
     exclude_exts = {".egg-info", ".pyc", ".joblib", ".parquet"}
 
     comments = {
@@ -109,20 +113,20 @@ def generate_tree(dir_path: Path, prefix: str = "") -> list[str]:
     for i, item in enumerate(filtered_items):
         is_last = (i == len(filtered_items) - 1)
         connector = "└── " if is_last else "├── "
-        rel_path = item.relative_to(Path(".")).as_posix()
+        rel_path = item.relative_to(root_path).as_posix()
         comment = comments.get(rel_path, "")
         comment_str = f"  # {comment}" if comment else ""
         lines.append(f"{prefix}{connector}{item.name}{comment_str}")
 
         if item.is_dir():
             extension = "    " if is_last else "│   "
-            lines.extend(generate_tree(item, prefix + extension))
+            lines.extend(generate_tree(item, root_path, prefix + extension))
 
     return lines
 
 
 def build_readme() -> None:
-    root = Path(".")
+    root = PROJECT_ROOT
     
     # 1. Load metrics.json
     with open(root / "models/metrics.json", "r", encoding="utf-8") as f:
@@ -153,11 +157,54 @@ def build_readme() -> None:
     with open(root / "params.yaml", "r", encoding="utf-8") as f:
         params = yaml.safe_load(f)
 
-    # 8. Load sample_request.json
+    # 8. Load docker-compose.yml for docker image tag
+    with open(root / "docker-compose.yml", "r", encoding="utf-8") as f:
+        compose_data = yaml.safe_load(f)
+    docker_image_tag = compose_data.get("services", {}).get("api", {}).get("image", "lifinity-api:1.0.0")
+
+    # 9. Read dataset sizes from parquet files / raw csv
+    train_df = pd.read_parquet(root / "data/processed/train.parquet")
+    val_df = pd.read_parquet(root / "data/processed/val.parquet")
+    test_df = pd.read_parquet(root / "data/processed/test.parquet")
+    
+    raw_csv_path = root / "data/raw/train.csv"
+    if raw_csv_path.exists():
+        raw_df = pd.read_csv(raw_csv_path)
+        n_raw = len(raw_df)
+        n_raw_features = len([c for c in raw_df.columns if c not in ("Id", "SalePrice")])
+    else:
+        n_raw = 1460
+        n_raw_features = 79
+
+    n_train = len(train_df)
+    n_val = len(val_df)
+    n_test = len(test_df)
+    n_train_val = n_train + n_val
+
+    # 10. Extract tuning trials from params.yaml
+    tune_trials_dict = params.get("tune", {}).get("trials", {})
+    tune_trials_items = [f"{m} {t}" for m, t in tune_trials_dict.items()]
+    tune_trials_formatted_str = ", ".join(tune_trials_items)
+
+    # Outlier threshold parameters
+    grlivarea_max = params.get("outliers", {}).get("grlivarea_max", 4000)
+    saleprice_min = params.get("outliers", {}).get("saleprice_min", 300000)
+
+    # 11. Count collected pytest tests
+    res = subprocess.run([sys.executable, "-m", "pytest", "--collect-only", "-q"], capture_output=True, text=True, cwd=root)
+    collected_lines = [l for l in res.stdout.splitlines() if "tests collected" in l]
+    if collected_lines:
+        n_pytest_tests = int(collected_lines[0].split()[0])
+    else:
+        n_pytest_tests = 53
+    
+    n_pytest_files = len([f for f in (root / "tests").glob("*.py") if f.name != "__init__.py"])
+
+    # 12. Load sample_request.json
     with open(root / "api/sample_request.json", "r", encoding="utf-8") as f:
         sample_req = json.load(f)
 
-    # 9. Get real prediction sample response via predictor
+    # 13. Get real prediction sample response via predictor
     from fastapi.testclient import TestClient
     from api.main import app
     with TestClient(app) as client:
@@ -181,8 +228,11 @@ def build_readme() -> None:
     blend_weights_str = ", ".join(weight_items)
 
     # Generate tree structure
-    tree_lines = ["lifinity/"] + generate_tree(Path("."))
+    tree_lines = ["lifinity/"] + generate_tree(root)
     tree_str = "\n".join(tree_lines)
+
+    # High value property count in test set
+    high_val_count = metrics.get("bands", {}).get(">$450k", {}).get("count", 1)
 
     readme_content = f"""# Lifinity - Residential Property Price Prediction
 
@@ -195,7 +245,7 @@ End-to-end production machine learning system for predicting residential house p
 ## 1. Results at a Glance
 
 * **Final Model**: Weighted Log Blend Ensemble comprising {blend_weights_str}.
-* **Unbiased Test Set Evaluation ({metrics['n_test']} holdout properties)**:
+* **Unbiased Test Set Evaluation ({n_test} holdout properties)**:
 
 | Metric | Value |
 | :--- | :--- |
@@ -215,31 +265,39 @@ End-to-end production machine learning system for predicting residential house p
 
 ```mermaid
 flowchart TD
-    A[Raw Ames Data data/raw/train.csv] -->|70 / 15 / 15 Split| B[Data Split split.py]
-    B --> C[Train Set 1,020 rows]
-    B --> D[Val Set 219 rows]
-    B --> E[Test Set 219 rows]
+    A["Raw Ames data (DVC) data/raw/train.csv"] -->|"70 / 15 / 15 Split"| B["Data Split split.py"]
+    B --> C["Train set ({n_train:,} rows)"]
+    B --> D["Val set ({n_val:,} rows)"]
+    B --> E["Test set ({n_test:,} rows)"]
     
-    C --> F[Domain Imputation & Outlier Removal]
-    F --> G[Feature Engineering 16 Features]
-    G --> H[Preprocessing Branching]
+    C --> F["Domain Imputation and Outlier Removal"]
+    F --> G["Feature Engineering (16 features)"]
+    G --> H["Preprocessing Branching"]
     
-    H -->|Linear Branch: RobustScaler + PowerTransformer| I[Lasso / ElasticNet / Ridge]
-    H -->|Tree Branch: Median Imputer + Ordinal Encoding| J[XGBoost / CatBoost / LightGBM / RF]
+    H -->|"Linear Branch: RobustScaler + PowerTransformer"| I["Lasso / ElasticNet / Ridge"]
+    H -->|"Tree Branch: Median Imputer + Ordinal Encoding"| J["XGBoost / CatBoost / LightGBM / RF"]
     
-    I & J --> K[7-Model Baseline Comparison]
-    K --> L[Optuna Tuning 50 Trials]
-    L --> M[LogBlendRegressor SLSQP Optimization]
+    I --> K["7-Model Baseline Comparison"]
+    J --> K
+    K --> L["Optuna tuning ({tune_trials_formatted_str} trials)"]
     
-    M --> N[Final Model Evaluation]
-    E --> N
+    D --> M["Model and blend checks (validation)"]
+    L --> M
+    M --> N["LogBlendRegressor SLSQP Optimization"]
     
-    N --> O[Serialized model.joblib & MLflow Production Registry]
-    O --> P[FastAPI REST API api/main.py]
-    P --> Q[Docker Container lifinity-api:latest]
+    C --> O["Final fit on train + val ({n_train_val:,} rows)"]
+    D --> O
+    N --> O
     
-    R[GitHub Actions CI] -->|Test Job| S[Ruff + Pytest with Synthetic Data]
-    R -->|Docker Job| T[Smoke Model + Container Build + Endpoint Health Check]
+    E --> P["Single final evaluation (test, touched once)"]
+    O --> P
+    
+    P --> Q["Serialized model.joblib and MLflow Production Registry"]
+    Q --> R["FastAPI REST API api/main.py"]
+    R --> S["Docker Container {docker_image_tag}"]
+    
+    T["GitHub Actions CI"] -->|"Test Job"| U["Ruff + Pytest with Synthetic Data"]
+    T -->|"Docker Job"| V["Smoke Model + Container Build + Endpoint Health Check"]
 ```
 
 ---
@@ -255,7 +313,7 @@ flowchart TD
 ## 4. Dataset
 
 * **Source**: [Kaggle House Prices: Advanced Regression Techniques](https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/data)
-* **Scope**: Ames, Iowa residential property sales dataset containing **1,460 sales records** with **79 explanatory features** recorded between 2006 and 2010.
+* **Scope**: Ames, Iowa residential property sales dataset containing **{n_raw:,} sales records** with **{n_raw_features} explanatory features** recorded between 2006 and 2010.
 * **Repository Policy**: Raw data files are **NOT** checked into the Git repository. They are locally tracked via DVC without a public remote.
 * **Data Setup**: Download `train.csv`, `test.csv`, and `data_description.txt` directly from Kaggle and place them in `data/raw/`.
 
@@ -324,12 +382,12 @@ python3 -m uvicorn api.main:app --port 8000
 
 * **EDA & Target Transformation**: Target variable `SalePrice` exhibits right-skewness; model targets are fitted on `log1p(SalePrice)` and transformed back using `expm1()` to minimize relative percentage errors and stabilize variance.
 * **Missing Value Imputation**: Domain-aware imputation handles missing structural features (`PoolQC` -> `"None"`, `GarageArea` -> `0`, `GarageYrBlt` -> `YearBuilt`), preventing data leakage.
-* **Outlier Filtering**: Exactly **2 severe outliers** (Ids 524 and 1299: `GrLivArea > 4,000 sq ft` with `SalePrice < $300,000`) were identified and removed **exclusively from the training set** to prevent boundary distortion.
-* **Data Splitting**: Stratified 70% train (1,020 rows clean), 15% validation (219 rows), and 15% test (219 rows) holdout split with fixed random seed (`42`).
+* **Outlier Filtering**: Exactly **2 severe outliers** (Ids 524 and 1299: `GrLivArea > {grlivarea_max:,} sq ft` with `SalePrice < {fmt_dollar(saleprice_min)}`) were identified and removed **exclusively from the training set** to prevent boundary distortion.
+* **Data Splitting**: Stratified 70% train ({n_train:,} rows clean), 15% validation ({n_val:,} rows), and 15% test ({n_test:,} rows) holdout split with fixed random seed (`42`).
 * **Feature Engineering**: **16 domain-specific engineered features** created (including `TotalSF`, `TotalBath`, `HouseAge`, `RemodAge`, `QualxArea`, `QualSum`, `OverallScore`, `TotalPorchSF`, `LotRatio`).
 * **Preprocessing Branches**: Linear models use Yeo-Johnson power transformation (`SkewCorrector`) and `RobustScaler`; tree models use median imputation and ordinal/one-hot encoding.
 * **Feature Ablation & Selection**: Ablation study on `ablation.csv` determined `LotRatio` and `IsRemodeled` were unhelpful and dropped; Lasso regularization selected **{n_lasso_nonzero} non-zero features** out of **{n_lasso_total} total preprocessed dimensions**.
-* **Model Baseline & Tuning**: Evaluated 7 model architectures across 5-fold CV; top 4 candidates (Lasso, ElasticNet, XGBoost, CatBoost) were tuned via Optuna over 50 trials each.
+* **Model Baseline & Tuning**: Evaluated 7 model architectures across 5-fold CV; top candidate models were tuned via Optuna ({tune_trials_formatted_str} trials).
 * **Ensemble Blending**: Constructed a `LogBlendRegressor` using SLSQP constrained optimization on Out-Of-Fold (OOF) log predictions to assign optimal model weights.
 
 ---
@@ -412,8 +470,8 @@ python3 -m uvicorn api.main:app --port 8000
         b_mape = fmt_pct2(b_info["mape"])
         readme_content += f"| **{b_name}** | {b_cnt} | `{b_mae}` | `{b_mape}` |\n"
 
-    readme_content += """
-* **Note on High-Value Properties**: The `>$450k` price band contains only **1 house** in the holdout test set (actual price ~$755k), resulting in higher percentage variance for luxury estates.
+    readme_content += f"""
+* **Note on High-Value Properties**: The `>$450k` price band contains only **{high_val_count} house** in the holdout test set (actual price ~$755k), resulting in higher percentage variance for luxury estates.
 
 ### Diagnostic Visualizations
 
@@ -462,8 +520,8 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/predict" -Method Post -ContentType
 ### cURL Invocation Example
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/predict" \
-     -H "Content-Type: application/json" \
+curl -X POST "http://127.0.0.1:8000/predict" \\
+     -H "Content-Type: application/json" \\
      -d @api/sample_request.json
 ```
 
@@ -505,13 +563,13 @@ curl -X POST "http://127.0.0.1:8000/predict" \
 * **MLflow Tracking & Registry**:
   * View local runs: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
   * Model registered under `lifinity-price` with alias `production`.
-* **Pytest Suite**: **53 tests across 10 modules** covering data splitting, cleaning, preprocessor branches, feature engineering, model training, Optuna tuning, evaluation, API endpoints, and CI synthetic generation.
+* **Pytest Suite**: **{n_pytest_tests} tests across {n_pytest_files} modules** covering data splitting, cleaning, preprocessor branches, feature engineering, model training, Optuna tuning, evaluation, API endpoints, and CI synthetic generation.
 * **CI Automation (.github/workflows/ci.yml)**:
   * `test` job: Runs Ruff linter and Pytest suite. Real data/model tests auto-skip when files are absent; synthetic pipeline tests run unconditionally.
   * `docker` job: Prepares synthetic smoke model, builds multi-stage Docker image, starts container, polls `/health` (60s max), posts sample prediction, and cleans up container.
 * **Container Security & Logging**:
   * Multi-stage build with pinned dependencies in `requirements-serve.txt`.
-  * Runs under non-root app user.
+  * Runs under non-root app user ({docker_image_tag}).
   * Request logs recorded asynchronously to `logs/requests.jsonl`.
 
 ---
@@ -519,10 +577,10 @@ curl -X POST "http://127.0.0.1:8000/predict" \
 ## 11. Limitations
 
 1. **Geographic & Temporal Bound**: Trained strictly on Ames, Iowa sales from 2006 to 2010; may not generalize to other US regions or different macroeconomic eras.
-2. **Dataset Size**: Dataset contains ~1,460 total rows; validation and test holdout sets are relatively small (~219 rows each), introducing statistical variance.
-3. **Generalization Gap**: Unbiased test RMSE(log) (`{test_rmse_log}`) is higher than cross-validation scores (~0.10–0.11), reflecting holdout variance.
-4. **Luxury Estate Sparsity**: Properties >$450,000 are sparsely represented in training data (only 1 property in test set).
-5. **Inference Latency**: Blending 4 pipeline models incurs ~250–320 ms inference latency per request.
+2. **Dataset Size**: Dataset contains ~{n_raw:,} total rows; validation and test holdout sets are relatively small (~{n_val} rows each), introducing statistical variance.
+3. **Generalization Gap**: Unbiased test RMSE(log) (`{test_rmse_log}`) is higher than cross-validation scores (~0.10-0.11), reflecting holdout variance.
+4. **Luxury Estate Sparsity**: Properties >$450,000 are sparsely represented in training data (only {high_val_count} property in test set).
+5. **Inference Latency**: Blending 4 pipeline models incurs ~250-320 ms inference latency per request.
 6. **Split Strategy**: Uses stratified random splitting rather than strictly chronological time-based splitting.
 
 ---

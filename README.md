@@ -29,31 +29,39 @@ End-to-end production machine learning system for predicting residential house p
 
 ```mermaid
 flowchart TD
-    A[Raw Ames Data data/raw/train.csv] -->|70 / 15 / 15 Split| B[Data Split split.py]
-    B --> C[Train Set 1,020 rows]
-    B --> D[Val Set 219 rows]
-    B --> E[Test Set 219 rows]
+    A["Raw Ames data (DVC) data/raw/train.csv"] -->|"70 / 15 / 15 Split"| B["Data Split split.py"]
+    B --> C["Train set (1,020 rows)"]
+    B --> D["Val set (219 rows)"]
+    B --> E["Test set (219 rows)"]
     
-    C --> F[Domain Imputation & Outlier Removal]
-    F --> G[Feature Engineering 16 Features]
-    G --> H[Preprocessing Branching]
+    C --> F["Domain Imputation and Outlier Removal"]
+    F --> G["Feature Engineering (16 features)"]
+    G --> H["Preprocessing Branching"]
     
-    H -->|Linear Branch: RobustScaler + PowerTransformer| I[Lasso / ElasticNet / Ridge]
-    H -->|Tree Branch: Median Imputer + Ordinal Encoding| J[XGBoost / CatBoost / LightGBM / RF]
+    H -->|"Linear Branch: RobustScaler + PowerTransformer"| I["Lasso / ElasticNet / Ridge"]
+    H -->|"Tree Branch: Median Imputer + Ordinal Encoding"| J["XGBoost / CatBoost / LightGBM / RF"]
     
-    I & J --> K[7-Model Baseline Comparison]
-    K --> L[Optuna Tuning 50 Trials]
-    L --> M[LogBlendRegressor SLSQP Optimization]
+    I --> K["7-Model Baseline Comparison"]
+    J --> K
+    K --> L["Optuna tuning (Lasso 60, ElasticNet 60, XGBoost 40, CatBoost 25 trials)"]
     
-    M --> N[Final Model Evaluation]
-    E --> N
+    D --> M["Model and blend checks (validation)"]
+    L --> M
+    M --> N["LogBlendRegressor SLSQP Optimization"]
     
-    N --> O[Serialized model.joblib & MLflow Production Registry]
-    O --> P[FastAPI REST API api/main.py]
-    P --> Q[Docker Container lifinity-api:latest]
+    C --> O["Final fit on train + val (1,239 rows)"]
+    D --> O
+    N --> O
     
-    R[GitHub Actions CI] -->|Test Job| S[Ruff + Pytest with Synthetic Data]
-    R -->|Docker Job| T[Smoke Model + Container Build + Endpoint Health Check]
+    E --> P["Single final evaluation (test, touched once)"]
+    O --> P
+    
+    P --> Q["Serialized model.joblib and MLflow Production Registry"]
+    Q --> R["FastAPI REST API api/main.py"]
+    R --> S["Docker Container lifinity-api:1.0.0"]
+    
+    T["GitHub Actions CI"] -->|"Test Job"| U["Ruff + Pytest with Synthetic Data"]
+    T -->|"Docker Job"| V["Smoke Model + Container Build + Endpoint Health Check"]
 ```
 
 ---
@@ -62,41 +70,6 @@ flowchart TD
 
 ```text
 lifinity/
-├── .dvc
-│   ├── cache
-│   │   ├── files
-│   │   │   └── md5
-│   │   │       ├── 11
-│   │   │       │   └── d5dc22c5a08a00aedec623673952cb
-│   │   │       ├── 21
-│   │   │       │   └── 51877bf60f9986e0af2332d48ee24d
-│   │   │       ├── 25
-│   │   │       │   └── 7555ae04270bc5c3e3a20189c2d1b7
-│   │   │       ├── 73
-│   │   │       │   └── ea110af728c014074bb7894eb93464
-│   │   │       ├── 80
-│   │   │       │   └── ccab65fb115cbad143dbbd2bcd5577
-│   │   │       ├── 81
-│   │   │       │   └── 7957da93c154ac0bf201a19910ca3f
-│   │   │       ├── bc
-│   │   │       │   └── db6fc93e5629391920905d410c8a04
-│   │   │       ├── dc
-│   │   │       │   └── ec4b79bf9c7317bd9e17789bf888f0
-│   │   │       ├── e6
-│   │   │       │   └── b913c4bbd16b1728a42d94918c0267
-│   │   │       └── fe
-│   │   │           └── b8c467bf921e03e8ed30c6184a2f1b
-│   │   └── runs
-│   │       └── 6c
-│   │           └── 6cb8d4db161641d40b0d903b11dba242e1d53497de897ff1461216d7e489791d
-│   │               └── 160e65d6b9fb9fc75390c13952da8152291e80efeec14e7a06c5ad2776deaea4
-│   ├── tmp
-│   │   ├── btime
-│   │   ├── lock
-│   │   ├── rwlock
-│   │   └── rwlock.lock
-│   ├── .gitignore
-│   └── config
 ├── .github  # GitHub Actions CI workflows
 │   └── workflows  # CI pipeline definitions
 │       └── ci.yml  # CI workflow (test & docker jobs)
@@ -286,7 +259,7 @@ python3 -m uvicorn api.main:app --port 8000
 * **Feature Engineering**: **16 domain-specific engineered features** created (including `TotalSF`, `TotalBath`, `HouseAge`, `RemodAge`, `QualxArea`, `QualSum`, `OverallScore`, `TotalPorchSF`, `LotRatio`).
 * **Preprocessing Branches**: Linear models use Yeo-Johnson power transformation (`SkewCorrector`) and `RobustScaler`; tree models use median imputation and ordinal/one-hot encoding.
 * **Feature Ablation & Selection**: Ablation study on `ablation.csv` determined `LotRatio` and `IsRemodeled` were unhelpful and dropped; Lasso regularization selected **103 non-zero features** out of **205 total preprocessed dimensions**.
-* **Model Baseline & Tuning**: Evaluated 7 model architectures across 5-fold CV; top 4 candidates (Lasso, ElasticNet, XGBoost, CatBoost) were tuned via Optuna over 50 trials each.
+* **Model Baseline & Tuning**: Evaluated 7 model architectures across 5-fold CV; top candidate models were tuned via Optuna (Lasso 60, ElasticNet 60, XGBoost 40, CatBoost 25 trials).
 * **Ensemble Blending**: Constructed a `LogBlendRegressor` using SLSQP constrained optimization on Out-Of-Fold (OOF) log predictions to assign optimal model weights.
 
 ---
@@ -398,7 +371,7 @@ python3 -m uvicorn api.main:app --port 8000
   "model_version": "3cd41b1",
   "fields_defaulted": 67,
   "warnings": [],
-  "latency_ms": 367.6
+  "latency_ms": 333.87
 }
 ```
 
@@ -411,7 +384,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/predict" -Method Post -ContentType
 ### cURL Invocation Example
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/json"      -d @api/sample_request.json
+curl -X POST "http://127.0.0.1:8000/predict" \
+     -H "Content-Type: application/json" \
+     -d @api/sample_request.json
 ```
 
 * **Validation & Fallback**:
@@ -452,13 +427,13 @@ curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/
 * **MLflow Tracking & Registry**:
   * View local runs: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
   * Model registered under `lifinity-price` with alias `production`.
-* **Pytest Suite**: **53 tests across 10 modules** covering data splitting, cleaning, preprocessor branches, feature engineering, model training, Optuna tuning, evaluation, API endpoints, and CI synthetic generation.
+* **Pytest Suite**: **{n_pytest_tests} tests across {n_pytest_files} modules** covering data splitting, cleaning, preprocessor branches, feature engineering, model training, Optuna tuning, evaluation, API endpoints, and CI synthetic generation.
 * **CI Automation (.github/workflows/ci.yml)**:
   * `test` job: Runs Ruff linter and Pytest suite. Real data/model tests auto-skip when files are absent; synthetic pipeline tests run unconditionally.
   * `docker` job: Prepares synthetic smoke model, builds multi-stage Docker image, starts container, polls `/health` (60s max), posts sample prediction, and cleans up container.
 * **Container Security & Logging**:
   * Multi-stage build with pinned dependencies in `requirements-serve.txt`.
-  * Runs under non-root app user.
+  * Runs under non-root app user ({docker_image_tag}).
   * Request logs recorded asynchronously to `logs/requests.jsonl`.
 
 ---
@@ -466,10 +441,10 @@ curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/
 ## 11. Limitations
 
 1. **Geographic & Temporal Bound**: Trained strictly on Ames, Iowa sales from 2006 to 2010; may not generalize to other US regions or different macroeconomic eras.
-2. **Dataset Size**: Dataset contains ~1,460 total rows; validation and test holdout sets are relatively small (~219 rows each), introducing statistical variance.
-3. **Generalization Gap**: Unbiased test RMSE(log) (`{test_rmse_log}`) is higher than cross-validation scores (~0.10–0.11), reflecting holdout variance.
-4. **Luxury Estate Sparsity**: Properties >$450,000 are sparsely represented in training data (only 1 property in test set).
-5. **Inference Latency**: Blending 4 pipeline models incurs ~250–320 ms inference latency per request.
+2. **Dataset Size**: Dataset contains ~{n_raw:,} total rows; validation and test holdout sets are relatively small (~{n_val} rows each), introducing statistical variance.
+3. **Generalization Gap**: Unbiased test RMSE(log) (`{test_rmse_log}`) is higher than cross-validation scores (~0.10-0.11), reflecting holdout variance.
+4. **Luxury Estate Sparsity**: Properties >$450,000 are sparsely represented in training data (only {high_val_count} property in test set).
+5. **Inference Latency**: Blending 4 pipeline models incurs ~250-320 ms inference latency per request.
 6. **Split Strategy**: Uses stratified random splitting rather than strictly chronological time-based splitting.
 
 ---
