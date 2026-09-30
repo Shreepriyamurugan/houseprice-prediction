@@ -1,7 +1,99 @@
 stages:
-  raw_data:
-    cmd: python -c "import os; assert os.path.exists('data/raw/train.csv')"
+  split:
+    cmd: .venv\Scripts\python.exe -m lifinity.data.split
     deps:
       - data/raw/train.csv
-      - data/raw/test.csv
-      - data/raw/data_description.txt
+      - src/lifinity/data/split.py
+      - src/lifinity/features/cleaning.py
+    params:
+      - split
+      - outliers
+      - seed
+    outs:
+      - data/processed/train.parquet
+      - data/processed/val.parquet
+      - data/processed/test.parquet
+
+  compare:
+    frozen: true
+    cmd: .venv\Scripts\python.exe -m lifinity.models.train
+    deps:
+      - data/processed/train.parquet
+      - data/processed/val.parquet
+      - src/lifinity/features
+      - src/lifinity/models/train.py
+    params:
+      - cv
+      - preprocess
+      - features
+      - mlflow
+    outs:
+      - reports/model_comparison.csv:
+          cache: false
+      - reports/ablation.csv:
+          cache: false
+      - reports/lasso_selected_features.csv:
+          cache: false
+      - reports/lgbm_feature_importance.csv:
+          cache: false
+
+  tune:
+    frozen: true
+    cmd: .venv\Scripts\python.exe -m lifinity.models.tune && .venv\Scripts\python.exe -m lifinity.models.ensemble
+    deps:
+      - data/processed/train.parquet
+      - data/processed/val.parquet
+      - src/lifinity/features
+      - src/lifinity/models/tune.py
+      - src/lifinity/models/ensemble.py
+    params:
+      - tune
+      - cv
+    outs:
+      - reports/best_params.json:
+          cache: false
+      - reports/tuning_results.csv:
+          cache: false
+      - reports/ensemble_results.csv:
+          cache: false
+      - reports/ensemble_weights.json:
+          cache: false
+
+  evaluate:
+    cmd: .venv\Scripts\python.exe -m lifinity.models.evaluate
+    deps:
+      - data/processed/train.parquet
+      - data/processed/val.parquet
+      - data/processed/test.parquet
+      - src/lifinity/features
+      - src/lifinity/models/evaluate.py
+      - src/lifinity/models/ensemble.py
+      - reports/ensemble_weights.json
+    params:
+      - final_model
+      - outliers
+      - preprocess
+      - features
+    outs:
+      - models/model.joblib
+      - models/input_defaults.json:
+          cache: false
+    metrics:
+      - models/metrics.json:
+          cache: false
+    plots:
+      - reports/figures/16_test_pred_vs_actual.png
+      - reports/figures/17_test_residuals.png
+      - reports/figures/18_test_error_by_band.png
+
+  report:
+    cmd: .venv\Scripts\python.exe -m lifinity.models.report
+    deps:
+      - models/metrics.json
+      - reports/ensemble_results.csv
+      - reports/tuning_results.csv
+      - reports/model_comparison.csv
+      - src/lifinity/models/report.py
+    outs:
+      - reports/model_selection.md:
+          cache: false

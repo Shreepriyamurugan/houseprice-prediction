@@ -15,3 +15,285 @@ stages:
       hash: md5
       md5: 80ccab65fb115cbad143dbbd2bcd5577
       size: 460676
+  split:
+    cmd: .venv\Scripts\python.exe -m lifinity.data.split
+    deps:
+    - path: data/raw/train.csv
+      hash: md5
+      md5: 80ccab65fb115cbad143dbbd2bcd5577
+      size: 460676
+    - path: src/lifinity/data/split.py
+      hash: md5
+      md5: d166c93126fc449a108513a522093b65
+      size: 3499
+    - path: src/lifinity/features/cleaning.py
+      hash: md5
+      md5: 63b56f7abaa26b25bf024c8fbba0b533
+      size: 6916
+    params:
+      params.yaml:
+        outliers:
+          grlivarea_max: 4000
+          saleprice_min: 300000
+        seed: 42
+        split:
+          train_size: 0.7
+          val_size: 0.15
+          test_size: 0.15
+          seed: 42
+    outs:
+    - path: data/processed/test.parquet
+      hash: md5
+      md5: 817957da93c154ac0bf201a19910ca3f
+      size: 46860
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: bcdb6fc93e5629391920905d410c8a04
+      size: 133811
+    - path: data/processed/val.parquet
+      hash: md5
+      md5: e6b913c4bbd16b1728a42d94918c0267
+      size: 46603
+  compare:
+    cmd: .venv\Scripts\python.exe -m lifinity.models.train
+    deps:
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: bcdb6fc93e5629391920905d410c8a04
+      size: 133811
+    - path: data/processed/val.parquet
+      hash: md5
+      md5: e6b913c4bbd16b1728a42d94918c0267
+      size: 46603
+    - path: src/lifinity/features
+      hash: md5
+      md5: 0dbb33a273ef6c500a1950d46545d6f4.dir
+      size: 58423
+      nfiles: 8
+    - path: src/lifinity/models/train.py
+      hash: md5
+      md5: 3dae843d4f5d2aa9de8ad050d950c2a1
+      size: 19479
+    params:
+      params.yaml:
+        cv:
+          n_splits: 5
+          n_repeats: 3
+        features:
+          drop_after:
+          - GarageArea
+          - GarageYrBlt
+          - PoolArea
+          - MiscVal
+          - LotRatio
+          - IsRemodeled
+        mlflow:
+          tracking_uri: sqlite:///mlflow.db
+          experiment: lifinity
+        preprocess:
+          skew_threshold: 0.75
+          min_frequency: 0.01
+    outs:
+    - path: reports/ablation.csv
+      hash: md5
+      md5: 969dde4c3f8ccd192d0f97b86e656bf7
+      size: 1092
+    - path: reports/lasso_selected_features.csv
+      hash: md5
+      md5: 16987399f7d85240b20f445f3d5789ff
+      size: 6109
+    - path: reports/lgbm_feature_importance.csv
+      hash: md5
+      md5: 495bd00fcd6896151d8a67e6b626dbbb
+      size: 6684
+    - path: reports/model_comparison.csv
+      hash: md5
+      md5: 389407ea71ea5966c9c3861f60e682b9
+      size: 1474
+  tune:
+    cmd: .venv\Scripts\python.exe -m lifinity.models.tune && 
+      .venv\Scripts\python.exe -m lifinity.models.ensemble
+    deps:
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: bcdb6fc93e5629391920905d410c8a04
+      size: 133811
+    - path: data/processed/val.parquet
+      hash: md5
+      md5: e6b913c4bbd16b1728a42d94918c0267
+      size: 46603
+    - path: src/lifinity/features
+      hash: md5
+      md5: 0dbb33a273ef6c500a1950d46545d6f4.dir
+      size: 58423
+      nfiles: 8
+    - path: src/lifinity/models/ensemble.py
+      hash: md5
+      md5: 743f437b2c45abbdd61c0d637a8f07d2
+      size: 11451
+    - path: src/lifinity/models/tune.py
+      hash: md5
+      md5: 4954d825aeb1413b32b57fc77e077e76
+      size: 11189
+    params:
+      params.yaml:
+        cv:
+          n_splits: 5
+          n_repeats: 3
+        tune:
+          cv_folds: 5
+          trials:
+            Lasso: 60
+            ElasticNet: 60
+            XGBoost: 40
+            CatBoost: 25
+          timeout_sec: 900
+    outs:
+    - path: reports/best_params.json
+      hash: md5
+      md5: 0ce80a3f7e119b77da581f2ae1b6f032
+      size: 700
+    - path: reports/ensemble_results.csv
+      hash: md5
+      md5: ea2b0635d76f2a9ec884a4b5e3bfeedf
+      size: 713
+    - path: reports/ensemble_weights.json
+      hash: md5
+      md5: 8c47bf2252e2a8e609d0eda88d8d562f
+      size: 226
+    - path: reports/tuning_results.csv
+      hash: md5
+      md5: 56a0c9bbc25ef204f8e04b969ec6869f
+      size: 795
+  evaluate:
+    cmd: .venv\Scripts\python.exe -m lifinity.models.evaluate
+    deps:
+    - path: data/processed/test.parquet
+      hash: md5
+      md5: 817957da93c154ac0bf201a19910ca3f
+      size: 46860
+    - path: data/processed/train.parquet
+      hash: md5
+      md5: bcdb6fc93e5629391920905d410c8a04
+      size: 133811
+    - path: data/processed/val.parquet
+      hash: md5
+      md5: e6b913c4bbd16b1728a42d94918c0267
+      size: 46603
+    - path: reports/ensemble_weights.json
+      hash: md5
+      md5: 8c47bf2252e2a8e609d0eda88d8d562f
+      size: 226
+    - path: src/lifinity/features
+      hash: md5
+      md5: 0dbb33a273ef6c500a1950d46545d6f4.dir
+      size: 58423
+      nfiles: 8
+    - path: src/lifinity/models/ensemble.py
+      hash: md5
+      md5: 743f437b2c45abbdd61c0d637a8f07d2
+      size: 11451
+    - path: src/lifinity/models/evaluate.py
+      hash: md5
+      md5: 630ed57a0d2a0521315d63f441118594
+      size: 13764
+    params:
+      params.yaml:
+        features:
+          drop_after:
+          - GarageArea
+          - GarageYrBlt
+          - PoolArea
+          - MiscVal
+          - LotRatio
+          - IsRemodeled
+        final_model:
+          type: blend
+          name: blend
+          params:
+            weights:
+              Lasso: 0.2596586609018729
+              ElasticNet: 0.2643797339856401
+              XGBoost: 0.4377247188109414
+              CatBoost: 0.03823688630154574
+            model_params:
+              Lasso:
+                alpha: 0.0006119854691593898
+              ElasticNet:
+                alpha: 0.0006358358856676254
+                l1_ratio: 0.6872653200164409
+              XGBoost:
+                n_estimators: 1476
+                learning_rate: 0.03262249393408143
+                max_depth: 3
+                min_child_weight: 4
+                subsample: 0.8535059794504334
+                colsample_bytree: 0.32760317883921475
+                reg_lambda: 0.1645820664056707
+                reg_alpha: 0.0006408000295252277
+              CatBoost:
+                iterations: 1882
+                learning_rate: 0.01871879330520506
+                depth: 4
+                l2_leaf_reg: 1.1752776200103654
+                random_strength: 1.7563780885296132
+                bagging_temperature: 0.7824263094276925
+        outliers:
+          grlivarea_max: 4000
+          saleprice_min: 300000
+        preprocess:
+          skew_threshold: 0.75
+          min_frequency: 0.01
+    outs:
+    - path: models/input_defaults.json
+      hash: md5
+      md5: 4c4029053d667d931e0165e3c6c80679
+      size: 1863
+    - path: models/metrics.json
+      hash: md5
+      md5: 7970f5fd4cc28e61022d466efa5624f1
+      size: 1226
+    - path: models/model.joblib
+      hash: md5
+      md5: 11d5dc22c5a08a00aedec623673952cb
+      size: 2476686
+    - path: reports/figures/16_test_pred_vs_actual.png
+      hash: md5
+      md5: feb8c467bf921e03e8ed30c6184a2f1b
+      size: 286710
+    - path: reports/figures/17_test_residuals.png
+      hash: md5
+      md5: 2151877bf60f9986e0af2332d48ee24d
+      size: 219692
+    - path: reports/figures/18_test_error_by_band.png
+      hash: md5
+      md5: 73ea110af728c014074bb7894eb93464
+      size: 116137
+  report:
+    cmd: .venv\Scripts\python.exe -m lifinity.models.report
+    deps:
+    - path: models/metrics.json
+      hash: md5
+      md5: 7970f5fd4cc28e61022d466efa5624f1
+      size: 1226
+    - path: reports/ensemble_results.csv
+      hash: md5
+      md5: ea2b0635d76f2a9ec884a4b5e3bfeedf
+      size: 713
+    - path: reports/model_comparison.csv
+      hash: md5
+      md5: 389407ea71ea5966c9c3861f60e682b9
+      size: 1474
+    - path: reports/tuning_results.csv
+      hash: md5
+      md5: 56a0c9bbc25ef204f8e04b969ec6869f
+      size: 795
+    - path: src/lifinity/models/report.py
+      hash: md5
+      md5: 403e71a9021d87a96ff923a976e324f9
+      size: 12527
+    outs:
+    - path: reports/model_selection.md
+      hash: md5
+      md5: bb6b14a9b619ecec13f44217a38272bd
+      size: 9185
