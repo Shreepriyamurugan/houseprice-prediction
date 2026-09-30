@@ -82,9 +82,12 @@ stages:
       - models/metrics.json:
           cache: false
     plots:
-      - reports/figures/16_test_pred_vs_actual.png
-      - reports/figures/17_test_residuals.png
-      - reports/figures/18_test_error_by_band.png
+      - reports/figures/16_test_pred_vs_actual.png:
+          cache: false
+      - reports/figures/17_test_residuals.png:
+          cache: false
+      - reports/figures/18_test_error_by_band.png:
+          cache: false
 
   report:
     cmd: .venv\Scripts\python.exe -m lifinity.models.report
