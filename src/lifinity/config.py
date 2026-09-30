@@ -7,6 +7,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 def get_project_root() -> Path:
     """Return the absolute path to the project root directory."""
+    cwd = Path.cwd()
+    if (cwd / "params.yaml").exists() or (cwd / "models" / "model.joblib").exists():
+        return cwd
     current = Path(__file__).resolve()
     for parent in [current] + list(current.parents):
         if (parent / "pyproject.toml").exists() or (parent / "params.yaml").exists():

@@ -5,7 +5,6 @@ import json
 from typing import Any
 from catboost import CatBoostRegressor
 from lightgbm import LGBMRegressor
-import mlflow
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
@@ -195,6 +194,8 @@ def run_ensemble(use_saved_weights: bool = False) -> None:
     print(f"  {'Blend':<15}  {blend_oof_rmse:>14.4f}  {blend_val_rmse:>14.4f}  {blend_val_mae:>12.2f}  {blend_val_mape:>10.4f}  {blend_val_r2:>10.4f}  {'1.0000':>8}")
 
     # Log to MLflow
+    import mlflow
+
     tracking_uri = params.get("mlflow", {}).get("tracking_uri", "sqlite:///mlflow.db")
     experiment_name = params.get("mlflow", {}).get("experiment", "lifinity")
     mlflow.set_tracking_uri(tracking_uri)

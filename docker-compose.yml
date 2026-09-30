@@ -1,0 +1,29 @@
+services:
+  api:
+    build: .
+    image: lifinity-api:1.0.0
+    container_name: lifinity-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health').getcode() == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+# Note: For tracking experiments locally, MLflow UI can be run on the host with:
+# mlflow ui --backend-store-uri sqlite:///mlflow.db
+#
+# Optional MLflow server service example:
+#  mlflow:
+#    image: ghcr.io/mlflow/mlflow:v2.16.0
+#    container_name: lifinity-mlflow
+#    ports:
+#      - "5000:5000"
+#    command: mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --default-artifact-root /mlflow/artifacts --host 0.0.0.0
+#    volumes:
+#      - ./mlflow.db:/mlflow/mlflow.db
