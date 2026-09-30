@@ -1,155 +1,491 @@
-# Lifinity – Residential Property Price Prediction
+# Lifinity - Residential Property Price Prediction
 
-End-to-end ML + MLOps regression system for the Ames Housing dataset.
+![CI](https://github.com/Shreepriyamurugan/houseprice-prediction/actions/workflows/ci.yml/badge.svg)
+
+End-to-end production machine learning system for predicting residential house prices in Ames, Iowa using a tuned log-blend ensemble with full MLOps lifecycle automation, DVC data versioning, MLflow experiment tracking, FastAPI REST serving, and Docker containerization.
 
 ---
 
-## 1. Project Architecture & Directory Layout
+## 1. Results at a Glance
 
-The project follows a modular production MLOps design separating raw data, pipelines, model artifacts, reporting, and deployment endpoints:
+* **Final Model**: Weighted Log Blend Ensemble comprising Lasso (25.97%), ElasticNet (26.44%), XGBoost (43.77%), CatBoost (3.82%).
+* **Unbiased Test Set Evaluation (219 holdout properties)**:
 
+| Metric | Value |
+| :--- | :--- |
+| **RMSE (log-scale)** | `0.1249` |
+| **MAE ($)** | `$13,088` |
+| **RMSE ($)** | `$21,092` |
+| **MAPE (%)** | `8.28%` |
+| **R^2 ($-scale)** | `0.9191` |
+| **R^2 (log-scale)** | `0.9070` |
+
+* **MAPE-based accuracy (100 - MAPE)**: `91.72%` *(Note: Regression models have no true classification accuracy metric; MAPE-based accuracy is reported for intuitive business interpretation).*
+* **Honest Evaluation Note**: Cross-validation and validation set RMSE(log) scores were ~0.10-0.11; the test set RMSE(log) of `0.1249` provides an unbiased estimate on completely unseen property sales.
+
+---
+
+## 2. Architecture
+
+```mermaid
+flowchart TD
+    A[Raw Ames Data data/raw/train.csv] -->|70 / 15 / 15 Split| B[Data Split split.py]
+    B --> C[Train Set 1,020 rows]
+    B --> D[Val Set 219 rows]
+    B --> E[Test Set 219 rows]
+    
+    C --> F[Domain Imputation & Outlier Removal]
+    F --> G[Feature Engineering 16 Features]
+    G --> H[Preprocessing Branching]
+    
+    H -->|Linear Branch: RobustScaler + PowerTransformer| I[Lasso / ElasticNet / Ridge]
+    H -->|Tree Branch: Median Imputer + Ordinal Encoding| J[XGBoost / CatBoost / LightGBM / RF]
+    
+    I & J --> K[7-Model Baseline Comparison]
+    K --> L[Optuna Tuning 50 Trials]
+    L --> M[LogBlendRegressor SLSQP Optimization]
+    
+    M --> N[Final Model Evaluation]
+    E --> N
+    
+    N --> O[Serialized model.joblib & MLflow Production Registry]
+    O --> P[FastAPI REST API api/main.py]
+    P --> Q[Docker Container lifinity-api:latest]
+    
+    R[GitHub Actions CI] -->|Test Job| S[Ruff + Pytest with Synthetic Data]
+    R -->|Docker Job| T[Smoke Model + Container Build + Endpoint Health Check]
 ```
+
+---
+
+## 3. Project Structure
+
+```text
 lifinity/
-├── .github/
-│   └── workflows/
-│       └── ci.yml                     # Continuous Integration workflow
-├── api/
-│   ├── __init__.py
-│   ├── main.py                        # FastAPI application entrypoint
-│   ├── predictor.py                   # Model inference service
-│   └── schemas.py                     # Pydantic request/response schemas
-├── data/
-│   ├── processed/                     # Engineered feature tables
-│   │   └── .gitkeep
-│   └── raw/                           # Raw Ames Housing dataset
-│       ├── .gitkeep
-│       ├── data_description.txt
-│       ├── sample_submission.csv
-│       ├── test.csv
-│       └── train.csv
-├── logs/                              # Execution & inference logs
-│   └── .gitkeep
-├── models/                            # Trained model artifacts (.joblib)
-│   └── .gitkeep
-├── notebooks/
-│   └── 01_eda.ipynb                   # Executed EDA diagnostic notebook
-├── reports/
-│   └── figures/                       # Generated diagnostic plots (PNG)
-│       ├── 02_target_distribution.png
-│       ├── 03_missing_values.png
-│       ├── 04_outliers_grlivarea_saleprice.png
-│       ├── 06_top15_correlations_bar.png
-│       ├── 06_top15_correlations_heatmap.png
-│       ├── 08_price_bands.png
-│       ├── 09_price_and_volume_by_year.png
-│       ├── 10_sale_condition.png
-│       └── 11_saleprice_by_neighborhood.png
-├── scripts/
-│   ├── scaffold.py                    # Repository scaffold generator
-│   ├── test_eda.py                    # Standalone CLI diagnostic runner
-│   └── generate_and_execute_eda.py    # Programmatic notebook builder & executor
-├── src/
-│   └── lifinity/
-│       ├── __init__.py
-│       ├── config.py                  # Project paths & hyperparameters
-│       ├── data/                      # Ingestion, validation & splitting
+├── .dvc
+│   ├── cache
+│   │   ├── files
+│   │   │   └── md5
+│   │   │       ├── 11
+│   │   │       │   └── d5dc22c5a08a00aedec623673952cb
+│   │   │       ├── 21
+│   │   │       │   └── 51877bf60f9986e0af2332d48ee24d
+│   │   │       ├── 25
+│   │   │       │   └── 7555ae04270bc5c3e3a20189c2d1b7
+│   │   │       ├── 73
+│   │   │       │   └── ea110af728c014074bb7894eb93464
+│   │   │       ├── 80
+│   │   │       │   └── ccab65fb115cbad143dbbd2bcd5577
+│   │   │       ├── 81
+│   │   │       │   └── 7957da93c154ac0bf201a19910ca3f
+│   │   │       ├── bc
+│   │   │       │   └── db6fc93e5629391920905d410c8a04
+│   │   │       ├── dc
+│   │   │       │   └── ec4b79bf9c7317bd9e17789bf888f0
+│   │   │       ├── e6
+│   │   │       │   └── b913c4bbd16b1728a42d94918c0267
+│   │   │       └── fe
+│   │   │           └── b8c467bf921e03e8ed30c6184a2f1b
+│   │   └── runs
+│   │       └── 6c
+│   │           └── 6cb8d4db161641d40b0d903b11dba242e1d53497de897ff1461216d7e489791d
+│   │               └── 160e65d6b9fb9fc75390c13952da8152291e80efeec14e7a06c5ad2776deaea4
+│   ├── tmp
+│   │   ├── btime
+│   │   ├── lock
+│   │   ├── rwlock
+│   │   └── rwlock.lock
+│   ├── .gitignore
+│   └── config
+├── .github  # GitHub Actions CI workflows
+│   └── workflows  # CI pipeline definitions
+│       └── ci.yml  # CI workflow (test & docker jobs)
+├── api  # FastAPI web service application
+│   ├── __init__.py  # API package init
+│   ├── main.py  # FastAPI application entrypoint & routing
+│   ├── predictor.py  # Inference wrapper with fallback & logging
+│   ├── run_server.py  # Local Uvicorn server runner
+│   ├── sample_request.json  # Sample property payload for API testing
+│   └── schemas.py  # Pydantic request/response data schemas
+├── logs
+│   ├── .gitkeep
+│   └── requests.jsonl
+├── models  # Trained model artifacts and metrics
+│   ├── .gitkeep
+│   ├── input_defaults.json  # Feature medians/modes for payload defaulting
+│   └── metrics.json  # Evaluation metrics on test set
+├── notebooks
+│   └── 01_eda.ipynb
+├── reports  # Generated analysis reports and visualization figures
+│   ├── figures  # Diagnostic charts and plots
+│   │   ├── .gitkeep
+│   │   ├── 02_target_distribution.png
+│   │   ├── 03_missing_values.png
+│   │   ├── 04_outliers_grlivarea_saleprice.png
+│   │   ├── 06_top15_correlations_bar.png
+│   │   ├── 06_top15_correlations_heatmap.png
+│   │   ├── 08_price_bands.png
+│   │   ├── 09_price_and_volume_by_year.png
+│   │   ├── 10_sale_condition.png
+│   │   ├── 11_saleprice_by_neighborhood.png
+│   │   ├── 12_model_comparison.png
+│   │   ├── 13_feature_ablation.png
+│   │   ├── 14_feature_importance.png
+│   │   ├── 15_tuning_before_after.png
+│   │   ├── 16_test_pred_vs_actual.png
+│   │   ├── 17_test_residuals.png
+│   │   ├── 18_test_error_by_band.png
+│   │   ├── optuna_catboost.png
+│   │   ├── optuna_elasticnet.png
+│   │   ├── optuna_lasso.png
+│   │   └── optuna_xgboost.png
+│   ├── ablation.csv  # Feature ablation study metrics
+│   ├── best_params.json
+│   ├── ensemble_results.csv  # Blending optimization results
+│   ├── ensemble_weights.json  # Ensemble model blending weights
+│   ├── lasso_selected_features.csv  # Lasso non-zero feature coefficients
+│   ├── lgbm_feature_importance.csv  # LightGBM feature gain importances
+│   ├── model_comparison.csv  # Baseline 7-model CV/validation comparison
+│   ├── model_selection.md  # Comprehensive model selection report
+│   └── tuning_results.csv  # Optuna hyperparameter tuning summary
+├── scripts  # Utility automation scripts
+│   ├── build_readme.py  # README generator script
+│   ├── check_features.py
+│   ├── check_preprocessing.py
+│   ├── ci_smoke_model.py  # CI synthetic model builder script
+│   ├── generate_and_execute_eda.py
+│   ├── scaffold.py
+│   └── test_eda.py
+├── src  # Core Lifinity ML library source code
+│   └── lifinity  # Lifinity package root
+│       ├── features  # Feature engineering and preprocessing
 │       │   ├── __init__.py
-│       │   ├── ingest.py
-│       │   ├── split.py
-│       │   └── validate.py
-│       ├── features/                  # Cleaning & feature engineering
+│       │   ├── cleaning.py  # Domain imputer & outlier remover
+│       │   ├── engineering.py  # Domain feature engineering transformer
+│       │   └── preprocessor.py  # Sklearn column transformers & pipelines
+│       ├── models  # Model training, tuning, and evaluation
 │       │   ├── __init__.py
-│       │   ├── cleaning.py
-│       │   ├── engineering.py
-│       │   └── preprocessor.py
-│       ├── models/                    # Training, tuning & evaluation
+│       │   ├── ensemble.py  # LogBlendRegressor ensemble class
+│       │   ├── evaluate.py  # Model evaluation and metrics exporter
+│       │   ├── report.py  # Markdown report generator
+│       │   ├── train.py  # Baseline model trainer & MLflow logger
+│       │   └── tune.py  # Optuna hyperparameter tuner
+│       ├── monitoring
 │       │   ├── __init__.py
-│       │   ├── ensemble.py
-│       │   ├── evaluate.py
-│       │   ├── train.py
-│       │   └── tune.py
-│       └── monitoring/                # Drift detection & monitoring
-│           ├── __init__.py
-│           └── drift.py
-├── tests/                             # Unit & integration test suite
-│   ├── __init__.py
-│   ├── test_api.py
-│   ├── test_cleaning.py
-│   └── test_features.py
-├── ui/
-│   └── app.py                         # Streamlit interactive dashboard
+│       │   └── drift.py
+│       ├── __init__.py  # Package initialization
+│       └── config.py  # Project configuration and paths
+├── tests  # Pytest test suite modules
+│   ├── __init__.py  # Tests package init
+│   ├── synthetic.py  # Synthetic Ames dataset generator for CI
+│   ├── test_api.py  # FastAPI endpoint integration tests
+│   ├── test_cleaning.py  # Domain cleaning unit tests
+│   ├── test_evaluate.py  # Model evaluation unit tests
+│   ├── test_features.py  # Feature engineering unit tests
+│   ├── test_pipeline.py  # DVC workflow structure unit tests
+│   ├── test_preprocessor.py  # Preprocessor pipeline unit tests
+│   ├── test_split.py  # Data splitting unit tests
+│   ├── test_synthetic_pipeline.py  # Synthetic CI integration tests
+│   ├── test_train.py  # Model training unit tests
+│   └── test_tune.py  # Optuna tuning unit tests
+├── ui
+│   └── app.py
+├── .dockerignore
+├── .dvcignore
 ├── .gitignore
-├── Dockerfile                         # Production container definition
-├── docker-compose.yml                 # Multi-service composition
-├── dvc.yaml                           # DVC pipeline specification
-├── params.yaml                        # Central configuration parameters
-├── pyproject.toml                     # Build system & tooling configuration
-├── README.md                          # Main project documentation
-└── requirements.txt                   # Unpinned Python dependencies
+├── conftest.py
+├── docker-compose.yml  # Docker Compose orchestration config
+├── Dockerfile  # Container definition for production API serving
+├── dvc.lock
+├── dvc.yaml  # DVC pipeline DAG definition
+├── mlflow.db
+├── params.yaml  # Centralized project configuration parameters
+├── pyproject.toml  # Python package build config and pytest settings
+├── README.md  # Project documentation
+├── requirements-serve.txt  # Slim serving dependencies for Docker container
+├── requirements.lock.txt  # Pinned environment dependencies
+└── requirements.txt
 ```
 
 ---
 
-## 2. Core Automation Scripts (`scripts/`)
+## 4. Dataset
 
-Lifinity includes three purpose-built utility scripts under `scripts/`:
-
-### 1. `scripts/scaffold.py`
-- **Purpose**: Generates the complete directory tree, `.gitkeep` markers, starter modules, and configuration files (`params.yaml`, `pyproject.toml`, `requirements.txt`, `.gitignore`, `README.md`).
-- **Execution**:
-  ```bash
-  python scripts/scaffold.py
-  ```
-
-### 2. `scripts/test_eda.py`
-- **Purpose**: Standalone command-line diagnostic tool. Verifies raw data integrity and computes exact empirical numbers across all 11 diagnostic dimensions without needing to launch Jupyter.
-- **Execution**:
-  ```bash
-  python scripts/test_eda.py
-  ```
-- **Output**: Detailed terminal report printing shapes, missing count classification, outlier coordinates, skewness tables, correlation coefficients, near-constant category percentages, price bands, and time/location statistics.
-
-### 3. `scripts/generate_and_execute_eda.py`
-- **Purpose**: Programmatically builds the entire `notebooks/01_eda.ipynb` notebook from source, executes all 36 code and markdown cells via `nbclient.NotebookClient`, and renders high-resolution figures into `reports/figures/`.
-- **Execution**:
-  ```bash
-  python scripts/generate_and_execute_eda.py
-  ```
-- **Output**: Populated `notebooks/01_eda.ipynb` with embedded execution counts, stdout tables, and plot images.
+* **Source**: [Kaggle House Prices: Advanced Regression Techniques](https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/data)
+* **Scope**: Ames, Iowa residential property sales dataset containing **1,460 sales records** with **79 explanatory features** recorded between 2006 and 2010.
+* **Repository Policy**: Raw data files are **NOT** checked into the Git repository. They are locally tracked via DVC without a public remote.
+* **Data Setup**: Download `train.csv`, `test.csv`, and `data_description.txt` directly from Kaggle and place them in `data/raw/`.
 
 ---
 
-## 3. Exploratory Data Analysis (EDA) Findings
+## 5. Quickstart
 
-The EDA performed on the 1,460 observations and 81 features in `data/raw/train.csv` diagnosed key data challenges that dictate downstream pipeline requirements:
+### Windows (PowerShell)
 
-### Section-by-Section Key Diagnostics
+```powershell
+# Clone repository and enter directory
+git clone https://github.com/Shreepriyamurugan/houseprice-prediction.git
+Set-Location houseprice-prediction
 
-| Section | Focus Area | Key Metric / Evidence | Production Implication |
+# Create and activate virtual environment
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+
+# Install dependencies and package in editable mode
+pip install -r requirements.lock.txt
+pip install -e .
+
+# Place train.csv into data/raw/ then run DVC pipeline and tests
+dvc repro
+pytest -q
+
+# Run API locally
+python -m uvicorn api.main:app --port 8000
+```
+
+### Linux / macOS (Bash / Zsh)
+
+```bash
+# Clone repository and enter directory
+git clone https://github.com/Shreepriyamurugan/houseprice-prediction.git
+cd houseprice-prediction
+
+# Create and activate virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install dependencies and package in editable mode
+pip install -r requirements.lock.txt
+pip install -e .
+
+# Place train.csv into data/raw/ then run DVC pipeline and tests
+dvc repro
+pytest -q
+
+# Run API locally
+python3 -m uvicorn api.main:app --port 8000
+```
+
+* **Interactive API Documentation**: Open [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) in your browser.
+* **Running via Docker Compose**:
+  ```bash
+  docker compose up -d
+  # Access API docs at http://127.0.0.1:8000/docs
+  docker compose down
+  ```
+* **Note on Frozen Pipeline Stages**: `compare` and `tune` stages are marked as `frozen: true` in `dvc.yaml` to prevent long Optuna tuning execution (~30–40 min) during standard reruns. To unfreeze and retune: `dvc unfreeze tune && dvc repro`.
+
+---
+
+## 6. Pipeline and Key Decisions
+
+* **EDA & Target Transformation**: Target variable `SalePrice` exhibits right-skewness; model targets are fitted on `log1p(SalePrice)` and transformed back using `expm1()` to minimize relative percentage errors and stabilize variance.
+* **Missing Value Imputation**: Domain-aware imputation handles missing structural features (`PoolQC` -> `"None"`, `GarageArea` -> `0`, `GarageYrBlt` -> `YearBuilt`), preventing data leakage.
+* **Outlier Filtering**: Exactly **2 severe outliers** (Ids 524 and 1299: `GrLivArea > 4,000 sq ft` with `SalePrice < $300,000`) were identified and removed **exclusively from the training set** to prevent boundary distortion.
+* **Data Splitting**: Stratified 70% train (1,020 rows clean), 15% validation (219 rows), and 15% test (219 rows) holdout split with fixed random seed (`42`).
+* **Feature Engineering**: **16 domain-specific engineered features** created (including `TotalSF`, `TotalBath`, `HouseAge`, `RemodAge`, `QualxArea`, `QualSum`, `OverallScore`, `TotalPorchSF`, `LotRatio`).
+* **Preprocessing Branches**: Linear models use Yeo-Johnson power transformation (`SkewCorrector`) and `RobustScaler`; tree models use median imputation and ordinal/one-hot encoding.
+* **Feature Ablation & Selection**: Ablation study on `ablation.csv` determined `LotRatio` and `IsRemodeled` were unhelpful and dropped; Lasso regularization selected **103 non-zero features** out of **205 total preprocessed dimensions**.
+* **Model Baseline & Tuning**: Evaluated 7 model architectures across 5-fold CV; top 4 candidates (Lasso, ElasticNet, XGBoost, CatBoost) were tuned via Optuna over 50 trials each.
+* **Ensemble Blending**: Constructed a `LogBlendRegressor` using SLSQP constrained optimization on Out-Of-Fold (OOF) log predictions to assign optimal model weights.
+
+---
+
+## 7. Model Selection
+
+### Baseline 7-Model Comparison (`reports/model_comparison.csv`)
+
+| Model | Kind | CV RMSE(log) Mean ± Std | Val RMSE(log) | Val MAE ($) | Overfit Gap |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Lasso** | linear | `0.1080 ± 0.0085` | `0.1138` | `$14,279` | `0.0161` |
+| **Ridge** | linear | `0.1088 ± 0.0080` | `0.1154` | `$14,357` | `0.0182` |
+| **ElasticNet** | linear | `0.1089 ± 0.0088` | `0.1135` | `$14,215` | `0.0196` |
+| **XGBoost** | tree | `0.1112 ± 0.0087` | `0.1214` | `$13,644` | `0.0943` |
+| **CatBoost** | tree | `0.1114 ± 0.0095` | `0.1215` | `$13,698` | `0.0953` |
+| **LightGBM** | tree | `0.1151 ± 0.0079` | `0.1280` | `$14,212` | `0.0979` |
+| **RandomForest** | tree | `0.1252 ± 0.0091` | `0.1388` | `$15,997` | `0.0783` |
+
+### Optuna Hyperparameter Tuning (`reports/tuning_results.csv`)
+
+| Model | Baseline CV RMSE(log) | Tuned CV RMSE(log) | Val RMSE(log) | Val MAE ($) | Best Key Hyperparameters |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Lasso** | `0.1080` | `0.1078` | `0.1140` | `$14,277` | `{"alpha": 0.0006119854691593898}` |
+| **ElasticNet** | `0.1089` | `0.1081` | `0.1140` | `$14,306` | `{"alpha": 0.0006358358856676254, "l1_ratio": 0.6872653200164409}` |
+| **XGBoost** | `0.1112` | `0.1091` | `0.1178` | `$13,298` | `{"n_estimators": 1476, "learning_rate": 0.03262249393408143, "max_depth": 3, "min_child_weight": 4, "subsample": 0.8535059794504334, "colsample_bytree": 0.32760317883921475, "reg_lambda": 0.1645820664056707, "reg_alpha": 0.0006408000295252277}` |
+| **CatBoost** | `0.1114` | `0.1093` | `0.1180` | `$13,376` | `{"iterations": 1882, "learning_rate": 0.01871879330520506, "depth": 4, "l2_leaf_reg": 1.1752776200103654, "random_strength": 1.7563780885296132, "bagging_temperature": 0.7824263094276925}` |
+
+### Blend vs. Best Single Model Comparison (`reports/ensemble_results.csv`)
+
+| Candidate / Ensemble | OOF RMSE(log) | Val RMSE(log) | Test RMSE(log) | Weight | Model Type |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Lasso** | `0.1074` | `0.1140` | `0.1283` | `25.97%` | `single` |
+| **ElasticNet** | `0.1076` | `0.1140` | `N/A` | `26.44%` | `single` |
+| **XGBoost** | `0.1087` | `0.1178` | `N/A` | `43.77%` | `single` |
+| **CatBoost** | `0.1097` | `0.1180` | `N/A` | `3.82%` | `single` |
+| **Blend** | `0.1035` | `0.1114` | `0.1249` | `100.00%` | `blend` |
+
+* **Ensemble Decision Rule**: Use blend if `blend_oof_rmse < (best_single_oof - 0.002)` AND `blend_val_rmse <= best_single_val_rmse`.
+* **Decision Result**: `USE_BLEND` — Blend achieved OOF RMSE(log) of `0.1035` (improving over best single model Lasso `0.1074`) and test RMSE(log) of `0.1249`.
+
+---
+
+## 8. Evaluation
+
+### Test Set Metrics by Property Price Band (`models/metrics.json`)
+
+| Price Band | Property Count | MAE ($) | MAPE (%) |
 | :--- | :--- | :--- | :--- |
-| **1. Overview** | Dataset shape & types | 1,460 rows, 81 columns (38 numeric, 43 object), 0 duplicate rows | Clean baseline; high dimensional feature space |
-| **2. Target** | `SalePrice` distribution | Raw Skew: **+1.8829** (Mean: $180,921 vs. Median: $163,000)<br>Log1p Skew: **+0.1213** | Target transformation `y = log1p(SalePrice)` is mandatory for linear models & RMSLE optimization |
-| **3. Missing Values** | Dual-nature of NAs | **19 missing columns total**:<br>• **16 structural "absent"**: `PoolQC` (99.52%), `MiscFeature` (96.30%), `Alley` (93.77%), `Fence` (80.75%), `FireplaceQu` (47.26%), `MasVnrType` (59.73%), 5 `Garage*` (5.55%), 5 `Bsmt*` (2.53%–2.60%)<br>• **3 true "unknown"**: `LotFrontage` (17.74%, 259 rows), `MasVnrArea` (0.55%, 8 rows), `Electrical` (0.07%, 1 row) | Do **not** drop rows with NAs. Impute structural absence as `'None'` or `0`. Impute `LotFrontage` using median grouped by `Neighborhood`. |
-| **4. Outliers** | Living area vs. price | **2 severe partial-build outliers**:<br>• Id 524: 4,676 sqft, sold for $184,750 (`Partial`)<br>• Id 1299: 5,642 sqft, sold for $160,000 (`Partial`) | Prune rows where `GrLivArea > 4000 & SalePrice < 300000` to prevent coefficient distortion (De Cock recommendation). |
-| **5. Skewed Features** | Numeric distributions | **22 numeric features** have \|skew\| > 0.75 (top: `MiscVal` +24.48, `PoolArea` +14.83, `LotArea` +12.21, `3SsnPorch` +10.30, `LowQualFinSF` +9.01) | Apply Box-Cox / Yeo-Johnson or `log1p` power transformations during preprocessing. |
-| **6. Correlations** | Collinear predictors | Top target correlations: `OverallQual` (0.79), `GrLivArea` (0.71), `GarageCars` (0.64), `GarageArea` (0.62), `TotalBsmtSF` (0.61)<br>Extreme collinearity: `GarageCars` $\leftrightarrow$ `GarageArea` (**r = 0.8825**) | Address variance inflation via L1/L2 regularization (Ridge/Lasso/ElasticNet) or drop redundant garage dimension. |
-| **7. Rare Categories** | Zero-variance levels | • **7 columns > 95% single category**: `Utilities` (99.93% AllPub), `Street` (99.59% Pave), `PoolQC` (99.52% NA), `Condition2` (98.97% Norm), `RoofMatl` (98.22% CompShg), `Heating` (97.81% GasA), `MiscFeature` (96.30% NA)<br>• **25 columns** contain **68 rare levels** with <10 rows | Drop near-zero variance features; group rare categorical levels to prevent CV fold instability and test-time unseen label errors. |
-| **8. Price Imbalance** | Distribution by band | • <$150k: **615** (42.12%)<br>• $150k–$300k: **730** (50.00%)<br>• $300k–$450k: **101** (6.92%)<br>• >$450k: **14** (0.96%) | 92.12% of homes are <$300k. Stratified K-Fold based on price bands ensures fair validation representation of rare luxury homes. |
-| **9. Time Dynamics** | Sales across 2006–2010 | Annual volume 304–338 sales/yr (2006–2009); collapses to 175 in 2010 due to mid-year cut-off. Median price peaked at $167,000 (2007) and dipped to $155,000 (2010). | Capture macro-economic housing cycle and avoid data leakage from incomplete 2010 collection. |
-| **10. Sale Condition** | Transaction types | `Normal`: 1,198 sales (82.05%), median $160k<br>`Partial`: 125 sales (8.56%), median $244.6k (**+52.88%** premium)<br>`Abnorml`: 101 sales (6.92%), median $130k (**-18.75%** discount)<br>`AdjLand`: 4 sales (0.27%), median $104k (**-35.00%** discount) | Encode `SaleCondition` as a significant price adjustment indicator. |
-| **11. Location** | Neighborhood stratification | 25 neighborhoods. Median prices range from **$88,000** (`MeadowV`) to **$315,000** (`NridgHt`) — a **3.58x price ratio**. | Incorporate target encoding or cluster-based neighborhood aggregations. |
+| **<$150k** | 91 | `$9,969` | `10.63%` |
+| **$150-300k** | 113 | `$12,723` | `6.32%` |
+| **$300-450k** | 14 | `$26,670` | `7.63%` |
+| **>$450k** | 1 | `$147,993` | `24.20%` |
+
+* **Note on High-Value Properties**: The `>$450k` price band contains only **1 house** in the holdout test set (actual price ~$755k), resulting in higher percentage variance for luxury estates.
+
+### Diagnostic Visualizations
+
+![Test Prediction vs Actual](reports/figures/16_test_pred_vs_actual.png)
+
+![Test Residuals](reports/figures/17_test_residuals.png)
+
+![Test Error by Band](reports/figures/18_test_error_by_band.png)
+
+![Model Comparison](reports/figures/12_model_comparison.png)
+
+![LightGBM Top 20 Feature Importance](reports/figures/14_feature_importance.png)
 
 ---
 
-## 4. Generated Figure Artifacts (`reports/figures/`)
+## 9. API Reference
 
-The following diagnostic charts are generated automatically:
-1. `02_target_distribution.png`: Raw vs. Log1p `SalePrice` histograms with KDE curves and mean/median markers.
-2. `03_missing_values.png`: Horizontal bar chart of missing percentages color-coded by structural absence vs. unknown data.
-3. `04_outliers_grlivarea_saleprice.png`: Scatter plot highlighting the two extreme partial-build outliers in red with callout annotations.
-4. `06_top15_correlations_bar.png`: Ranked horizontal bar chart of the top 15 numeric features correlated with `SalePrice`.
-5. `06_top15_correlations_heatmap.png`: $16 \times 16$ Pearson correlation heatmap for top features.
-6. `08_price_bands.png`: Categorical distribution showing severe concentration in lower and middle price bands.
-7. `09_price_and_volume_by_year.png`: Dual-axis plot of median price (line) and transaction volume (bars) from 2006 to 2010.
-8. `10_sale_condition.png`: Two-panel bar chart comparing sales volume and median price across sale conditions.
-9. `11_saleprice_by_neighborhood.png`: Ranked boxplot showing price distributions across all 25 neighborhoods.
+### HTTP Endpoints Summary
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/` | API status and greeting |
+| `GET` | `/health` | Healthcheck endpoint with model load status |
+| `GET` | `/model-info` | Production model metadata and test performance |
+| `POST` | `/predict` | Single property price prediction |
+| `POST` | `/predict/batch` | Batch prediction endpoint (1–500 properties) |
+
+### Sample Request (`api/sample_request.json`)
+
+```json
+{
+  "OverallQual": 7,
+  "GrLivArea": 1710,
+  "Neighborhood": "CollgCr",
+  "YearBuilt": 2003,
+  "TotalBsmtSF": 856,
+  "1stFlrSF": 856,
+  "2ndFlrSF": 854,
+  "GarageCars": 2,
+  "FullBath": 2,
+  "HalfBath": 1,
+  "KitchenQual": "Gd",
+  "YrSold": 2008
+}
+```
+
+### Sample Real API Response
+
+```json
+{
+  "predicted_price": 188063.36,
+  "price_range_low": 172493.62,
+  "price_range_high": 203633.1,
+  "model_type": "blend",
+  "model_version": "3cd41b1",
+  "fields_defaulted": 67,
+  "warnings": [],
+  "latency_ms": 367.6
+}
+```
+
+### PowerShell Invocation Example
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/predict" -Method Post -ContentType "application/json" -InFile "api/sample_request.json"
+```
+
+### cURL Invocation Example
+
+```bash
+curl -X POST "http://127.0.0.1:8000/predict"      -H "Content-Type: application/json"      -d @api/sample_request.json
+```
+
+* **Validation & Fallback**:
+  * Returns `HTTP 422 Unprocessable Entity` for invalid field ranges (e.g. `OverallQual` = 15 or unknown `Neighborhood`).
+  * Emits warning messages in response payload for out-of-range historical years outside the 2006–2010 training period.
+  * Any features omitted from the JSON request are automatically defaulted using training set medians and modes (`fields_defaulted`).
+
+---
+
+## 10. MLOps Lifecycle & Automation
+
+### DVC Pipeline Graph (`dvc dag`)
+
+```text
+                   +-------+                      
+                   | split |                      
+                ***+-------+***                   
+            ****       *       ****               
+         ***           *           ***            
+       **              *              ***         
++------+               *                 **       
+| tune |*              *                  *       
++------+ ***           *                  *       
+    *       ****       *                  *       
+    *           ***    *                  *       
+    *              **  *                  *       
+    **           +----------+        +---------+  
+      ***        | evaluate |        | compare |  
+         ****    +----------+      **+---------+  
+             ***       *       ****               
+                ***    *    ***                   
+                   **  *  **                      
+                  +--------+                      
+                  | report |                      
+                  +--------+                      
+```
+
+* **MLflow Tracking & Registry**:
+  * View local runs: `mlflow ui --backend-store-uri sqlite:///mlflow.db`
+  * Model registered under `lifinity-price` with alias `production`.
+* **Pytest Suite**: **53 tests across 10 modules** covering data splitting, cleaning, preprocessor branches, feature engineering, model training, Optuna tuning, evaluation, API endpoints, and CI synthetic generation.
+* **CI Automation (.github/workflows/ci.yml)**:
+  * `test` job: Runs Ruff linter and Pytest suite. Real data/model tests auto-skip when files are absent; synthetic pipeline tests run unconditionally.
+  * `docker` job: Prepares synthetic smoke model, builds multi-stage Docker image, starts container, polls `/health` (60s max), posts sample prediction, and cleans up container.
+* **Container Security & Logging**:
+  * Multi-stage build with pinned dependencies in `requirements-serve.txt`.
+  * Runs under non-root app user.
+  * Request logs recorded asynchronously to `logs/requests.jsonl`.
+
+---
+
+## 11. Limitations
+
+1. **Geographic & Temporal Bound**: Trained strictly on Ames, Iowa sales from 2006 to 2010; may not generalize to other US regions or different macroeconomic eras.
+2. **Dataset Size**: Dataset contains ~1,460 total rows; validation and test holdout sets are relatively small (~219 rows each), introducing statistical variance.
+3. **Generalization Gap**: Unbiased test RMSE(log) (`{test_rmse_log}`) is higher than cross-validation scores (~0.10–0.11), reflecting holdout variance.
+4. **Luxury Estate Sparsity**: Properties >$450,000 are sparsely represented in training data (only 1 property in test set).
+5. **Inference Latency**: Blending 4 pipeline models incurs ~250–320 ms inference latency per request.
+6. **Split Strategy**: Uses stratified random splitting rather than strictly chronological time-based splitting.
+
+---
+
+## 12. Future Work
+
+* **Interactive Web Interface**: Build a Streamlit or React frontend for interactive valuation.
+* **Model Explainability**: Integrate SHAP / LIME visual explanation dashboards.
+* **Data & Concept Drift Monitoring**: Implement drift detection pipelines using Evidently AI.
+* **Cloud Deployment**: Deploy serverless container to AWS ECS / GCP Cloud Run.
+* **Chronological Split**: Evaluate model against strict time-based validation splits.
+* **DVC Remote Storage**: Configure S3 / GCS remote storage backend for DVC data artifacts.
+* **Inference Optimization**: Export pipelines to ONNX / C++ runtimes for sub-50ms inference.
+
+---
+
+## 13. Documentation & Deep Dives
+
+* **Detailed Model Selection Report**: [`reports/model_selection.md`](reports/model_selection.md)
